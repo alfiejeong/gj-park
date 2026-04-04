@@ -1,0 +1,16 @@
+body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, sans-serif; }
+.header { position: fixed; top: 0; left: 0; width: 100%; height: 60px; background-color: #FFD400; display: flex; align-items: center; justify-content: center; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+.header h1 { font-size: 20px; font-weight: 900; margin: 0; }
+#map { position: absolute; top: 60px; bottom: 0; width: 100%; height: calc(100vh - 60px); }
+.controls { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 10; }
+.btn { padding: 12px 18px; border: none; border-radius: 30px; background: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2); cursor: pointer; font-size: 13px; }
+.btn.primary { background: #FFD400; }
+.modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; max-width: 350px; background: white; padding: 25px; border-radius: 24px; box-shadow: 0 15px 40px rgba(0,0,0,0.3); z-index: 2000; max-height: 80vh; overflow-y: auto; }
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1999; backdrop-filter: blur(2px); }
+.input-group { margin-bottom: 12px; }
+.input-group label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; font-weight: bold; }
+.input-group input, .input-group textarea { width: 100%; padding: 10px; border: 1px solid #eee; border-radius: 10px; box-sizing: border-box; font-size: 14px; }
+.main-submit { width: 100%; padding: 15px; background: #FFD400; border: none; border-radius: 14px; font-weight: bold; cursor: pointer; font-size: 16px; }
+.parking-label { background: #000; color: #FFD400; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; border: 2px solid #FFD400; white-space: nowrap; }
+.custom-pin { width: 30px; height: 30px; background: #FFD400; border: 3px solid #000; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: -2px 2px 5px rgba(0,0,0,0.3); }
+.custom-pin::after { content: ''; width: 10px; height: 10px; background: #000; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
