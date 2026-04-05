@@ -1,16 +1,65 @@
-body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, sans-serif; }
-.header { position: fixed; top: 0; left: 0; width: 100%; height: 60px; background-color: #FFD400; display: flex; align-items: center; justify-content: center; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-.header h1 { font-size: 20px; font-weight: 900; margin: 0; }
+/* 기본 설정 */
+body, html { 
+    margin: 0; padding: 0; width: 100%; height: 100%; 
+    overflow: hidden; font-family: -apple-system, 'Pretendard', sans-serif; 
+    -webkit-tap-highlight-color: transparent; /* 모바일 터치 시 파란 박스 제거 */
+}
+
+/* 헤더: 구마적의 존재감을 드러내는 상단 바 */
+.header { 
+    position: fixed; top: 0; left: 0; width: 100%; height: 60px; 
+    background-color: #FFD400; display: flex; flex-direction: column; /* 세로 정렬 추가 */
+    align-items: center; justify-content: center; z-index: 1000; 
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+}
+.header h1 { font-size: 18px; font-weight: 900; margin: 0; letter-spacing: -1px; }
+
+/* 지도 영역 */
 #map { position: absolute; top: 60px; bottom: 0; width: 100%; height: calc(100vh - 60px); }
-.controls { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 10; }
-.btn { padding: 12px 18px; border: none; border-radius: 30px; background: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2); cursor: pointer; font-size: 13px; }
-.btn.primary { background: #FFD400; }
-.modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; max-width: 350px; background: white; padding: 25px; border-radius: 24px; box-shadow: 0 15px 40px rgba(0,0,0,0.3); z-index: 2000; max-height: 80vh; overflow-y: auto; }
-.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1999; backdrop-filter: blur(2px); }
-.input-group { margin-bottom: 12px; }
-.input-group label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; font-weight: bold; }
-.input-group input, .input-group textarea { width: 100%; padding: 10px; border: 1px solid #eee; border-radius: 10px; box-sizing: border-box; font-size: 14px; }
-.main-submit { width: 100%; padding: 15px; background: #FFD400; border: none; border-radius: 14px; font-weight: bold; cursor: pointer; font-size: 16px; }
-.parking-label { background: #000; color: #FFD400; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; border: 2px solid #FFD400; white-space: nowrap; }
-.custom-pin { width: 30px; height: 30px; background: #FFD400; border: 3px solid #000; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: -2px 2px 5px rgba(0,0,0,0.3); }
-.custom-pin::after { content: ''; width: 10px; height: 10px; background: #000; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+/* 하단 컨트롤 바 */
+.controls { 
+    position: absolute; bottom: 30px; width: 100%; 
+    display: flex; justify-content: center; gap: 8px; z-index: 10; 
+}
+.btn { 
+    padding: 12px 20px; border: none; border-radius: 30px; 
+    background: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2); 
+    cursor: pointer; font-size: 14px; transition: transform 0.1s;
+}
+.btn:active { transform: scale(0.95); } /* 클릭 시 눌리는 효과 */
+.btn.primary { background: #000; color: #FFD400; } /* 제보 버튼을 더 강조함 */
+
+/* 제보 모달창 */
+.modal { 
+    display: none; position: fixed; top: 50%; left: 50%; 
+    transform: translate(-50%, -50%); width: 88%; max-width: 360px; 
+    background: white; padding: 20px; border-radius: 20px; 
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4); z-index: 2000; 
+    max-height: 85vh; overflow-y: auto; 
+}
+.modal-overlay { 
+    display: none; position: fixed; top: 0; left: 0; 
+    width: 100%; height: 100%; background: rgba(0,0,0,0.7); 
+    z-index: 1999; backdrop-filter: blur(3px); 
+}
+
+/* 입력 폼 스타일 */
+.input-group { margin-bottom: 15px; }
+.input-group label { 
+    display: block; font-size: 12px; color: #333; 
+    margin-bottom: 5px; font-weight: 800; 
+}
+.input-group input, .input-group textarea { 
+    width: 100%; padding: 12px; border: 1px solid #ddd; 
+    border-radius: 12px; box-sizing: border-box; font-size: 15px;
+    background-color: #fcfcfc;
+}
+.input-group textarea { height: 80px; resize: none; }
+.input-group input[readonly] { background-color: #eee; color: #777; }
+
+/* 제보 완료 버튼 */
+.main-submit { 
+    width: 100%; padding: 16px; background: #FFD400; 
+    border: none; border-radius: 15px; font-weight: 900; 
+    cursor: pointer; font-size: 16px; margin-top:
