@@ -114,66 +114,60 @@ function 제보하기() {
 
 async function 데이터불러오기() {
     try {
-        console.log("데이터 통합 취재 재가동...");
+        console.log("서울시 최신 규격 데이터 취재 시작...");
 
+        // 1. 구글 시트 제보 데이터 호출 (기존 유지)
         const sheetRes = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
         const sheetData = await sheetRes.json();
 
-        const apiURL = `http://openapi.seoul.go.kr:8088/${SEOUL_API_KEY}/json/GetParkingInfo/1/1000/`;
+        // 2. 서울시 API 호출 (명세서 규격 적용)
+        const apiURL = `http://openapi.seoul.go.kr:8088/${SEOUL_API_KEY}/json/GetParkInfo/1/1000/`;
         
         let apiData = [];
         try {
             const apiRes = await fetch(apiURL);
             const apiRaw = await apiRes.json();
             
-            if (apiRaw && apiRaw.GetParkingInfo && apiRaw.GetParkingInfo.row) {
-                // [핵심 수정] 0건 방지를 위한 '그물망 필터링'
-                apiData = apiRaw.GetParkingInfo.row
+            if (apiRaw && apiRaw.GetParkInfo && apiRaw.GetParkInfo.row) {
+                apiData = apiRaw.GetParkInfo.row
                     .filter(item => {
-                        // 1. 유료여부(PAY_YN)가 'N'이거나 'n'인 경우
-                        const isPayN = item.PAY_YN && item.PAY_YN.toUpperCase() === "N";
-                        // 2. 요금명칭(PAY_NM)에 '무료'라는 단어가 포함된 경우
-                        const isFreeName = item.PAY_NM && item.PAY_NM.includes("무료");
-                        // 3. 야간무료개방(NIGHT_FREE_OPEN_NM)이 '무료'인 경우
-                        const isNightFree = item.NIGHT_FREE_OPEN_NM && item.NIGHT_FREE_OPEN_NM.includes("무료");
+                        // [무료 판별 로직] 유무료구분명(CHGD_FREE_NM)이 '무료'이거나, 
+                        // 토요일/공휴일 무료(SAT_CHGD_FREE_NM, LHLDY_NM)인 경우 포함
+                        const isAlwaysFree = item.CHGD_FREE_NM === "무료";
+                        const isWeekendFree = item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료";
+                        const isNightFree = item.NGHT_FREE_OPN_YN_NAME === "야간 개방";
+                        
+                        // 좌표(LAT, LOT)가 반드시 있어야 지도에 찍을 수 있음
+                        const hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 0;
 
-                        return isPayN || isFreeName || isNightFree;
+                        return (isAlwaysFree || isWeekendFree || isNightFree) && hasCoords;
                     })
-                    .map(item => {
-                        const latVal = parseFloat(item.LAT);
-                        const lngVal = parseFloat(item.LOT);
-
-                        if (isNaN(latVal) || isNaN(lngVal) || latVal === 0) return null;
-
-                        return {
-                            name: item.PARKING_NAME,
-                            address: item.ADDR || "주소 정보 없음",
-                            lat: latVal,
-                            lng: lngVal,
-                            // 실제 데이터에 맞춰 유형 자동 할당
-                            type: (item.PAY_YN === "N" || (item.PAY_NM && item.PAY_NM.includes("무료"))) ? "상시 무료" : "밤샘 무료", 
-                            capacity: item.CAPACITY || 0,
-                            note: `야간개방: ${item.NIGHT_FREE_OPEN_NM || '정보없음'} / 운영: ${item.WEEKDAY_BEGIN_TIME}~${item.WEEKDAY_END_TIME}`,
-                            user: "서울시 공공데이터"
-                        };
-                    })
-                    .filter(item => item !== null);
+                    .map(item => ({
+                        name: item.PKLT_NM, // 주차장명
+                        address: item.ADDR, // 주소
+                        lat: parseFloat(item.LAT),
+                        lng: parseFloat(item.LOT),
+                        // 상태에 따른 유형 매핑
+                        type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "조건부 무료",
+                        capacity: item.TPKCT || 0, // 총 주차면
+                        note: `평일: ${item.WD_OPER_BGNG_TM}~${item.WD_OPER_END_TM} / 토요일: ${item.SAT_CHGD_FREE_NM} / 공휴일: ${item.LHLDY_NM}`,
+                        user: "서울시"
+                    }));
                 
-                console.log("서울시 무료 주차장 발굴 성공:", apiData.length, "건");
-            } else {
-                console.error("서울시 API 응답 구조가 평소와 다릅니다. 확인 필요.");
+                console.log(`서울시 명당 발굴 성공: ${apiData.length}건 (무료 및 좌표 확보 기준)`);
             }
         } catch (apiErr) {
-            console.warn("서울시 데이터 수신 중 통신 장애:", apiErr);
+            console.warn("서울시 API 응답 분석 중 오류:", apiErr);
         }
 
+        // 3. 데이터 병합 및 캐시
         fetchedData = [...sheetData, ...apiData];
         localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
         
         if (mainMap) 마커표시실행();
-        console.log("거지주차.com 데이터 최종 통합 완료");
+        console.log("거지주차.com 서울시 데이터 이식 완료");
 
-    } catch (e) { console.error("프로세스 중단:", e); }
+    } catch (e) { console.error("데이터 통합 프로세스 실패:", e); }
 }
 
 function 마커표시실행() {
