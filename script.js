@@ -4,6 +4,9 @@ var currentInfoWindow = null;
 var fetchedData = null; 
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbytKkWpWDrqEebLCdxmcSqeSMZYT4YVd7jtzyMAGr02Kwebqj6j2jxXMOUhfIFOmaAH/exec";
 
+// [신규 추가] 서울시 API 인증키
+const SEOUL_API_KEY = "7353726f51616c663130305873426c73";
+
 window.onload = function() {
     // 1. 데이터 선제 로드 (캐시)
     const cachedData = localStorage.getItem('gj-cache');
@@ -112,12 +115,47 @@ function 제보하기() {
 // [기존 유지] 데이터불러오기, 마커표시실행, 닫기제보창, 저장제보 함수...
 async function 데이터불러오기() {
     try {
-        const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
-        const data = await response.json();
-        localStorage.setItem('gj-cache', JSON.stringify(data));
-        fetchedData = data;
+        // 1. 구글 시트 제보 데이터 호출 (기존 유지)
+        const sheetRes = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
+        const sheetData = await sheetRes.json();
+
+        // 2. 서울시 공영주차장 API 호출
+        // 1번부터 1000번까지의 데이터를 가져옵니다.
+        const apiURL = `http://openapi.seoul.go.kr:8088/${SEOUL_API_KEY}/json/GetParkingInfo/1/1000/`;
+        
+        let apiData = [];
+        try {
+            const apiRes = await fetch(apiURL);
+            const apiRaw = await apiRes.json();
+            
+            if (apiRaw && apiRaw.GetParkingInfo && apiRaw.GetParkingInfo.row) {
+                // [핵심 필터링] 유료여부가 'N'이거나 야간무료가 '무료'인 데이터만 추출
+                apiData = apiRaw.GetParkingInfo.row
+                    .filter(item => item.PAY_YN === "N" || item.NIGHT_FREE_OPEN_NM === "무료")
+                    .map(item => ({
+                        name: item.PARKING_NAME,
+                        address: item.ADDR || "주소 정보 없음",
+                        lat: parseFloat(item.LAT),
+                        lng: parseFloat(item.LOT),
+                        // 유료여부에 따라 유형 자동 매핑
+                        type: item.PAY_YN === "N" ? "상시 무료" : "밤샘 무료", 
+                        capacity: item.CAPACITY || 0,
+                        note: `운영시간: ${item.WEEKDAY_BEGIN_TIME}~${item.WEEKDAY_END_TIME} / 야간개방: ${item.NIGHT_FREE_OPEN_NM}`,
+                        user: "서울시 공공데이터"
+                    }));
+            }
+        } catch (apiErr) {
+            console.warn("서울시 API 호출 실패. 시트 데이터만 표시합니다.", apiErr);
+        }
+
+        // 3. 데이터 병합 (제보 데이터 + 서울시 무료 데이터)
+        fetchedData = [...sheetData, ...apiData];
+        
+        // 로컬 캐시에 저장하여 재접속 시 0초 로딩 보장
+        localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
+        
         if (mainMap) 마커표시실행();
-    } catch (e) { console.error("로딩 실패", e); }
+    } catch (e) { console.error("전체 데이터 통합 실패", e); }
 }
 
 function 마커표시실행() {
