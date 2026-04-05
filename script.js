@@ -113,40 +113,41 @@ function 제보하기() {
 }
 
 async function 데이터불러오기() {
-    console.log("데이터 개별 취재 공정 개시...");
+    console.log("데이터 각개전투 취재 개시...");
     
-    // 1. [독립 실행] 구글 시트 데이터 로드 및 표시
-    구글시트데이터로드();
+    // [독립 호출 1] 구글 시트 제보 데이터 (13건 등)
+    구글시트데이터취재();
 
-    // 2. [독립 실행] 서울시 API 데이터 로드 및 표시
-    서울시데이터로드();
+    // [독립 호출 2] 서울시 공공데이터 (무료 주차장)
+    서울시데이터취재();
 }
 
-async function 구글시트데이터로드() {
+async function 구글시트데이터취재() {
     try {
-        const res = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
-        const data = await res.json();
-        console.log("✅ 구글 시트 제보 수신:", data.length, "건");
+        const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
+        const data = await response.json();
+        console.log("✅ 구글 시트 제보 수신 완료:", data.length, "건");
         
         if (data && data.length > 0) {
             data.forEach(item => 마커생성실행(item, "제보"));
         }
-    } catch (e) { console.error("❌ 구글 시트 로드 실패:", e); }
+    } catch (e) {
+        console.error("❌ 구글 시트 통신망 장애:", e);
+    }
 }
 
-async function 서울시데이터로드() {
+async function 서울시데이터취재() {
     try {
-        // 보안 오류를 피하기 위해 포트 번호를 제거한 표준 HTTPS 경로 사용
+        // 보안 오류(CORS) 방지를 위해 표준 HTTPS 경로로 접근합니다.
         const apiURL = `https://openapi.seoul.go.kr/${SEOUL_API_KEY}/json/GetParkInfo/1/1000/`;
-        const res = await fetch(apiURL);
-        const json = await res.json();
+        const response = await fetch(apiURL);
+        const json = await response.json();
 
         if (json && json.GetParkInfo && json.GetParkInfo.row) {
             const rows = json.GetParkInfo.row;
-            let count = 0;
-            
+            let seoulCount = 0;
+
             rows.forEach(item => {
-                // 무료 조건 및 좌표 유효성 검사
                 const isFree = item.CHGD_FREE_NM === "무료" || item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료";
                 const hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
 
@@ -158,22 +159,22 @@ async function 서울시데이터로드() {
                         lng: parseFloat(item.LOT),
                         type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "주말 무료",
                         capacity: item.TPKCT || 0,
-                        note: `평일: ${item.WD_OPER_BGNG_TM}~${item.WD_OPER_END_TM}`,
+                        note: `평일 운영: ${item.WD_OPER_BGNG_TM}~${item.WD_OPER_END_TM}`,
                         user: "서울시"
                     };
                     마커생성실행(mappedItem, "서울시");
-                    count++;
+                    seoulCount++;
                 }
             });
-            console.log("✅ 서울시 무료 명당 발굴:", count, "건");
+            console.log("✅ 서울시 데이터 발굴 성공:", seoulCount, "건");
         }
-    } catch (e) { 
-        console.error("❌ 서울시 API 접근 불가 (보안/네트워크):", e); 
-        console.log("💡 팁: 크롬 주소창 옆 '안전하지 않은 콘텐츠 허용' 설정을 확인하십시오.");
+    } catch (e) {
+        console.error("❌ 서울시 API 보안 차단 또는 타임아웃:", e);
+        console.log("💡 팁: 브라우저가 서울시 서버를 차단 중일 수 있습니다.");
     }
 }
 
-// [핵심] 공통 마커 생성 함수 (중복 로직 제거)
+// [공통 마커 생성기] 데이터 소스에 관계없이 지도로 보냅니다.
 function 마커생성실행(item, source) {
     if (!mainMap || !item.lat || !item.lng) return;
 
