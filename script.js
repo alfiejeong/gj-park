@@ -1,6 +1,6 @@
 var mainMap = null, reportMarker = null, selectedCoord = null;
 var currentInfoWindow = null; // 현재 열린 정보창을 저장할 변수 추가
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyS1D7hm1nbDA-mYPp6qFSouB0LN8IY04I-NeE7A_mcg_3E_-fsQPhNqYCWmuiwf1w/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxLATr--8L1UTDKsZQLYfhueUeuVb9k7xIrtGO_2jxL4rJNMxfexiFJasQPjKitBWRH/exec";
 
 window.onload = function() {
     // 1. 기본 중심점 (위치 권한 거부 시 대비)
@@ -45,8 +45,11 @@ naver.maps.Event.addListener(mainMap, 'click', function(e) {
 
 async function 데이터불러오기() {
     try {
-        const response = await fetch(SCRIPT_URL);
+        const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
         const data = await response.json();
+
+        console.log("불러온 데이터:", data); // 개발자 도구(F12)에서 데이터가 오는지 확인용
+
         data.forEach(item => {
             const marker = new naver.maps.Marker({
                 position: new naver.maps.LatLng(item.lat, item.lng), map: mainMap,
@@ -86,7 +89,9 @@ naver.maps.Event.addListener(marker, "click", function() {
     }
 });
         });
-    } catch (e) { console.error("로딩 실패", e); }
+    } catch (e) {
+        console.error("데이터 로딩 실패:", e);
+    }
 }
 
 function 닫기제보창() {
