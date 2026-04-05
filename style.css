@@ -58,6 +58,24 @@ body, html {
 .input-group textarea { height: 80px; resize: none; }
 .input-group input[readonly] { background-color: #eee; color: #777; }
 
+/* 마커 라벨: 흰색 바탕 + 노란 테두리 (가시성 확보) */ */
+.parking-label { 
+    background: #ffffff; color: #000; padding: 6px 14px; 
+    border-radius: 20px; font-size: 13px; font-weight: 900; 
+    border: 3px solid #FFD400; white-space: nowrap;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+/* 다이내믹 마커: 통통 튀는 애니메이션 */
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+.dynamic-marker {
+    animation: bounce 0.8s infinite ease-in-out;
+    filter: drop-shadow(0 5px 5px rgba(0,0,0,0.3));
+}
+
 /* 제보 완료 버튼 */
 .main-submit { 
     width: 100%; padding: 16px; background: #FFD400; 

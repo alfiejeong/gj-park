@@ -33,6 +33,20 @@ function startMap(location) {
         center: location,
         zoom: 16
     });
+
+// 지도 클릭 시 열려있는 정보창 닫기 및 제보 마커 제거
+    naver.maps.Event.addListener(map, 'click', function() {
+        if (currentInfoWindow) {
+            currentInfoWindow.close();
+            currentInfoWindow = null;
+        }
+        // [보완 3] 제보 도중 지도 클릭 시 임시 마커 제거
+        if (reportMarker) {
+            reportMarker.setMap(null);
+            reportMarker = null;
+        }
+    });
+    
     데이터불러오기();
 }
 
@@ -86,7 +100,15 @@ async function 데이터불러오기() {
             const marker = new naver.maps.Marker({
                 position: new naver.maps.LatLng(item.lat, item.lng), 
                 map: map, // mainMap에서 map으로 수정
-                icon: { content: `<div class="parking-label">${item.type}</div>`, anchor: new naver.maps.Point(20, 10) }
+                icon: { 
+                    // 노란색 화살표(핀) 모양에 애니메이션 클래스 적용
+                    content: `
+                        <div class="dynamic-marker">
+                            <div style="font-size:30px;">📍</div>
+                            <div class="parking-label">${item.type}</div>
+                        </div>`, 
+                    anchor: new naver.maps.Point(20, 40) 
+                }
             });
 
             const infoWindow = new naver.maps.InfoWindow({
@@ -110,10 +132,11 @@ async function 데이터불러오기() {
                 pixelOffset: new naver.maps.Point(0, -10)
             });
 
-            naver.maps.Event.addListener(marker, "click", function() {
+            naver.maps.Event.addListener(marker, "click", function(e) {
                 if (currentInfoWindow) currentInfoWindow.close();
                 infoWindow.open(map, marker);
                 currentInfoWindow = infoWindow;
+                e.domEvent.stopPropagation(); // 지도 클릭 이벤트로 전파 방지
             });
         });
     } catch (e) {
@@ -121,10 +144,16 @@ async function 데이터불러오기() {
     }
 }
 
+// 제보 취소 시 초기화 로직 강화
 function 닫기제보창() {
     document.getElementById('report-modal').style.display = 'none';
     document.getElementById('modal-overlay').style.display = 'none';
-    if (reportMarker) reportMarker.setMap(null);
+    if (reportMarker) {
+        reportMarker.setMap(null);
+        reportMarker = null;
+    }
+    selectedCoord = null;
+    // 제보하기 시 걸었던 지도 클릭 리스너가 있다면 여기서도 관리 가능
 }
 
 async function 저장제보() {
