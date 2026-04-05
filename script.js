@@ -113,62 +113,95 @@ function 제보하기() {
 }
 
 async function 데이터불러오기() {
+    console.log("데이터 개별 취재 공정 개시...");
+    
+    // 1. [독립 실행] 구글 시트 데이터 로드 및 표시
+    구글시트데이터로드();
+
+    // 2. [독립 실행] 서울시 API 데이터 로드 및 표시
+    서울시데이터로드();
+}
+
+async function 구글시트데이터로드() {
     try {
-        console.log("데이터 수급 라인 전면 복구 시작...");
-
-        // 1. 구글 시트 제보 데이터 가져오기
-        const sheetRes = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
-        const sheetData = await sheetRes.json();
-        console.log("구글 시트 데이터 로드 완료:", sheetData.length, "건");
-
-        // 2. 서울시 API 직접 호출 (보안 규격 최적화 주소)
-        // 모바일 차단을 방지하기 위해 https와 443 표준 포트 규격을 사용합니다.
-        const apiURL = `https://openapi.seoul.go.kr/${SEOUL_API_KEY}/json/GetParkInfo/1/1000/`;
+        const res = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
+        const data = await res.json();
+        console.log("✅ 구글 시트 제보 수신:", data.length, "건");
         
-        let apiData = [];
-        try {
-            const apiRes = await fetch(apiURL);
-            const apiRaw = await apiRes.json();
+        if (data && data.length > 0) {
+            data.forEach(item => 마커생성실행(item, "제보"));
+        }
+    } catch (e) { console.error("❌ 구글 시트 로드 실패:", e); }
+}
+
+async function 서울시데이터로드() {
+    try {
+        // 보안 오류를 피하기 위해 포트 번호를 제거한 표준 HTTPS 경로 사용
+        const apiURL = `https://openapi.seoul.go.kr/${SEOUL_API_KEY}/json/GetParkInfo/1/1000/`;
+        const res = await fetch(apiURL);
+        const json = await res.json();
+
+        if (json && json.GetParkInfo && json.GetParkInfo.row) {
+            const rows = json.GetParkInfo.row;
+            let count = 0;
             
-            if (apiRaw && apiRaw.GetParkInfo && apiRaw.GetParkInfo.row) {
-                apiData = apiRaw.GetParkInfo.row
-                    .filter(item => {
-                        // 무료 조건: 유무료구분이 '무료'이거나 주말/공휴일이 '무료'인 경우
-                        const isFree = item.CHGD_FREE_NM === "무료" || 
-                                       item.SAT_CHGD_FREE_NM === "무료" || 
-                                       item.LHLDY_NM === "무료";
-                        // 좌표 유효성: 위도(LAT)가 정상 범위(서울 37도 부근)인 경우만
-                        const hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
-                        return isFree && hasCoords;
-                    })
-                    .map(item => ({
+            rows.forEach(item => {
+                // 무료 조건 및 좌표 유효성 검사
+                const isFree = item.CHGD_FREE_NM === "무료" || item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료";
+                const hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
+
+                if (isFree && hasCoords) {
+                    const mappedItem = {
                         name: item.PKLT_NM,
                         address: item.ADDR,
                         lat: parseFloat(item.LAT),
                         lng: parseFloat(item.LOT),
-                        type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "조건부 무료",
+                        type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "주말 무료",
                         capacity: item.TPKCT || 0,
-                        note: `평일: ${item.WD_OPER_BGNG_TM}~${item.WD_OPER_END_TM} / 토·공휴일: ${item.SAT_CHGD_FREE_NM}/${item.LHLDY_NM}`,
+                        note: `평일: ${item.WD_OPER_BGNG_TM}~${item.WD_OPER_END_TM}`,
                         user: "서울시"
-                    }));
-                console.log("서울시 데이터 발굴 성공:", apiData.length, "건");
-            }
-        } catch (apiErr) {
-            console.error("서울시 API 호출 실패 (네트워크/보안):", apiErr);
+                    };
+                    마커생성실행(mappedItem, "서울시");
+                    count++;
+                }
+            });
+            console.log("✅ 서울시 무료 명당 발굴:", count, "건");
         }
-
-        // 3. 데이터 병합 및 지도 현시
-        fetchedData = [...sheetData, ...apiData];
-        localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
-        
-        if (mainMap) {
-            마커표시실행();
-            console.log("전체 마커 지도 배치 명령 완료");
-        }
-
     } catch (e) { 
-        console.error("통합 로딩 중 치명적 오류:", e); 
+        console.error("❌ 서울시 API 접근 불가 (보안/네트워크):", e); 
+        console.log("💡 팁: 크롬 주소창 옆 '안전하지 않은 콘텐츠 허용' 설정을 확인하십시오.");
     }
+}
+
+// [핵심] 공통 마커 생성 함수 (중복 로직 제거)
+function 마커생성실행(item, source) {
+    if (!mainMap || !item.lat || !item.lng) return;
+
+    const marker = new naver.maps.Marker({
+        position: new naver.maps.LatLng(item.lat, item.lng),
+        map: mainMap,
+        icon: {
+            content: `<div class="parking-label ${source === '서울시' ? 'seoul-style' : ''}">${item.type}</div>`,
+            anchor: new naver.maps.Point(20, 10)
+        }
+    });
+
+    const infoWindow = new naver.maps.InfoWindow({
+        content: `<div style="padding:15px; min-width:200px; line-height:1.5; background:#fff; border:3px solid #FFD400; border-radius:12px;">
+            <h4 style="margin:0; color:#FF5252;">📍 ${item.name}</h4>
+            <div style="font-size:12px; color:#666;">${item.address}</div>
+            <div style="font-size:13px; margin-top:5px;"><b>유형:</b> ${item.type} (${item.capacity}면)</div>
+            <div style="font-size:12px; background:#f9f9f9; padding:8px; margin-top:8px; border-radius:6px;">${item.note}</div>
+            <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">출처: ${item.user}</div>
+        </div>`,
+        borderWidth: 0, disableAnchor: true, pixelOffset: new naver.maps.Point(0, -10)
+    });
+
+    naver.maps.Event.addListener(marker, "click", function() {
+        if (currentInfoWindow) currentInfoWindow.close();
+        infoWindow.open(mainMap, marker);
+        currentInfoWindow = infoWindow;
+    });
 }
 
 // 나머지 마커표시실행, 제보하기 등 함수는 기존 최적화 코드 유지
