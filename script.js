@@ -9,10 +9,15 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzQsFeRNYbSGxBQpiqnZ
 // [보존] 서비스 시작점
 window.onload = function() {
     const savedNick = localStorage.getItem('gj-nick');
-    if (savedNick) document.getElementById('user-nick').value = savedNick;
+    if (savedNick) {
+        const nickInput = document.getElementById('user-nick');
+        if(nickInput) nickInput.value = savedNick;
+    }
 
+    // 1. [즉시 실행] 데이터 호출은 백그라운드에서 조용히 시작
     데이터불러오기();
 
+    // 2. [즉시 실행] 데이터 기다리지 않고 지도부터 바로 그립니다 (3초 삭제의 핵심)
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(success, error);
     } else {
@@ -21,8 +26,7 @@ window.onload = function() {
 };
 
 function success(position) {
-    const myLocation = new naver.maps.LatLng(position.coords.latitude, position.coords.longitude);
-    startMap(myLocation);
+    startMap(new naver.maps.LatLng(position.coords.latitude, position.coords.longitude));
 }
 
 function error() {
@@ -30,14 +34,15 @@ function error() {
 }
 
 function startMap(location) {
+    // 지도를 즉시 생성하여 사용자에게 보여줌
     map = new naver.maps.Map('map', {
         center: location,
-        zoom: 16
+        zoom: 16,
+        logoControl: false // 로고 컨트롤 등 불필요한 요소 제거로 속도 향상
     });
 
-    naver.maps.Event.once(map, 'init', function() {
-        if (fetchedData) 마커표시실행();
-    });
+    // 데이터가 이미 도착해 있다면 바로 뿌리고, 아니면 올 때까지 기다림
+    if (fetchedData) 마커표시실행();
 
     naver.maps.Event.addListener(map, 'click', function() {
         if (currentInfoWindow) { currentInfoWindow.close(); currentInfoWindow = null; }
@@ -47,8 +52,11 @@ function startMap(location) {
 
 async function 데이터불러오기() {
     try {
+        // 구글 서버에 데이터 요청 (가장 오래 걸리는 구간)
         const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
         fetchedData = await response.json();
+        
+        // 데이터 도착 시 지도가 이미 떠 있다면 즉시 마커 주입
         if (map) 마커표시실행();
     } catch (e) {
         console.error("데이터 수신 실패:", e);
@@ -60,8 +68,7 @@ function 마커표시실행() {
 
     fetchedData.forEach(item => {
         const finalAddr = item.address || item.addr || item.주소 || "주소 정보 없음";
-        const userName = item.user || item.username || item.제보자 || "익명";
-        const placeName = item.name || item.title || item.장소명 || "무명 장소";
+        const placeName = item.name || item.title || "무명 장소";
 
         const marker = new naver.maps.Marker({
             position: new naver.maps.LatLng(item.lat, item.lng), 
@@ -83,10 +90,7 @@ function 마커표시실행() {
                 <div style="font-size:12px; background:#f9f9f9; padding:8px; margin-top:8px; border-radius:6px; color:#555; border-left:3px solid #FFD400;">
                     ${item.note || '꿀팁 준비 중'}
                 </div>
-                <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">제보자: ${userName}</div>
-                <div style="font-size:10px; color:#ff5252; font-weight:bold; margin-top:10px; border-top:1px dashed #eee; padding-top:5px; text-align:center;">
-                    ⚠️ 구마적 한마디: "여기 꽉 찼으면 바로 제보 때려주쇼!"
-                </div>
+                <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">제보자: ${item.user || '익명'}</div>
             </div>`,
             borderWidth: 0,
             disableAnchor: true,
@@ -109,8 +113,6 @@ function 내위치찾기() {
             map.setCenter(curr);
             map.setZoom(17);
         });
-    } else {
-        alert("위치 기능을 사용할 수 없습니다.");
     }
 }
 
@@ -143,8 +145,6 @@ function 닫기제보창() {
     document.getElementById('modal-overlay').style.display = 'none';
     if (reportMarker) { reportMarker.setMap(null); reportMarker = null; }
     selectedCoord = null;
-    document.getElementById('place-addr').value = "";
-    document.getElementById('place-name').value = "";
 }
 
 async function 저장제보() {
@@ -160,17 +160,10 @@ async function 저장제보() {
     localStorage.setItem('gj-nick', user);
     const payload = { user: user, address: addr, name: name, type: type, capacity: cap, note: note, lat: selectedCoord.lat(), lng: selectedCoord.lng() };
     
-    const submitBtn = document.getElementById('submit-btn');
-    submitBtn.innerText = "전송 중...";
-    submitBtn.disabled = true;
-
+    document.getElementById('submit-btn').innerText = "전송 중...";
     try {
         await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload), mode: 'no-cors' });
         alert("🎉 제보 성공!");
         location.reload();
-    } catch (e) { 
-        alert("전송 실패"); 
-        submitBtn.innerText = "제보 완료하기";
-        submitBtn.disabled = false;
-    }
+    } catch (e) { alert("전송 실패"); }
 }
