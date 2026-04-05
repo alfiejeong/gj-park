@@ -206,7 +206,7 @@ function doGet(e) {
 
   // 2. [핵심] 구글 서버가 서울시 API를 직접 호출 (보안 차단 없음)
   var seoulApiKey = "7353726f51616c663130305873426c73";
-  // 구글 서버는 외부망 연결이 자유로우므로 http 포트 호출도 문제없습니다.
+  // 구글 서버는 외부망 연결이 자유로우므로 http 호출도 문제없습니다.
   var apiURL = "http://openapi.seoul.go.kr:8088/" + seoulApiKey + "/json/GetParkInfo/1/1000/";
   
   try {
