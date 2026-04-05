@@ -58,21 +58,23 @@ body, html {
 .input-group textarea { height: 80px; resize: none; }
 .input-group input[readonly] { background-color: #eee; color: #777; }
 
-/* 마커 라벨: 흰색 바탕 + 노란 테두리 (가시성 확보) */ */
+/* 1. 저장된 데이터: 흰색 바탕 + 노란 테두리 (가시성 극대화) */
 .parking-label { 
     background: #ffffff; color: #000; padding: 6px 14px; 
     border-radius: 20px; font-size: 13px; font-weight: 900; 
     border: 3px solid #FFD400; white-space: nowrap;
     box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    display: inline-block;
 }
 
-/* 다이내믹 마커: 통통 튀는 애니메이션 */
-@keyframes bounce {
+/* 4. 제보 시 움직이는 노란 화살표 애니메이션 */
+@keyframes point-down {
     0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+    50% { transform: translateY(-15px); }
 }
-.dynamic-marker {
-    animation: bounce 0.8s infinite ease-in-out;
+.reporting-pin {
+    animation: point-down 0.6s infinite ease-in-out;
+    font-size: 40px; /* 가시성 좋게 크게 설정 */
     filter: drop-shadow(0 5px 5px rgba(0,0,0,0.3));
 }
 
