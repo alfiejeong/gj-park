@@ -99,48 +99,52 @@ function 제보하기() {
 // map 객체가 생성되었는지 확인하는 안전장치만 살짝 추가합니다.
 async function 데이터불러오기() {
     try {
+        // [속도 개선] 캐시 방지를 위해 현재 시간을 붙여 호출
         const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
         const data = await response.json();
 
-        // 지도가 생성될 때까지 아주 잠시 대기 (이미 생성되었다면 바로 통과)
+        console.log("수신 데이터 확인:", data); // 개발자 도구(F12)에서 실제 키값을 확인하기 위함
+
+        // 지도가 생성될 때까지 대기하는 로직 최적화
         const checkMap = setInterval(() => {
             if (map) {
                 clearInterval(checkMap);
+                
                 data.forEach(item => {
+                    // [데이터 매핑 개선] 시트 헤더가 address, addr, 주소 중 무엇이든 대응합니다.
+                    const finalAddr = item.address || item.addr || item.주소 || "주소 정보 없음";
+                    const userName = item.user || item.username || item.제보자 || "익명";
+                    const placeName = item.name || item.title || item.장소명 || "무명 장소";
+
                     const marker = new naver.maps.Marker({
                         position: new naver.maps.LatLng(item.lat, item.lng), 
                         map: map,
                         icon: { 
-                            content: `<div class="parking-label">${item.type}</div>`, 
+                            content: `<div class="parking-label">${item.type || '주차'}</div>`, 
                             anchor: new naver.maps.Point(20, 10) 
                         }
                     });
 
-                    // 데이터불러오기 함수 내 infoWindow 정의 부분
-const infoWindow = new naver.maps.InfoWindow({
-    content: `
-    <div style="padding:15px; min-width:200px; line-height:1.5; background-color: #fff; border: 3px solid #FFD400; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-        <h4 style="margin:0; color:#FF5252; font-size:16px;">📍 ${item.name || '무명 장소'}</h4>
-        
-        <div style="font-size:12px; color:#666; margin-bottom:5px;">
-            ${item.address ? item.address : '주소 정보 없음'}
-        </div>
-        
-        <div style="font-size:13px; margin-top:5px; color:#333;">
-            <b>유형:</b> <span style="color:#000;">${item.type || '일반'}</span> (${item.capacity || 0}면)
-        </div>
-        <div style="font-size:12px; background:#f9f9f9; padding:8px; margin-top:8px; border-radius:6px; color:#555; border-left:3px solid #FFD400;">
-            ${item.note || '꿀팁 준비 중'}
-        </div>
-        <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">제보자: ${item.user || '익명'}</div>
-        <div style="font-size:10px; color:#ff5252; font-weight:bold; margin-top:10px; border-top:1px dashed #eee; padding-top:5px; text-align:center;">
-            ⚠️ 구마적 한마디: "여기 꽉 찼으면 바로 제보 때려주쇼!"
-        </div>
-    </div>`,
-    borderWidth: 0,
-    disableAnchor: true,
-    pixelOffset: new naver.maps.Point(0, -10)
-});
+                    const infoWindow = new naver.maps.InfoWindow({
+                        content: `
+                        <div style="padding:15px; min-width:200px; line-height:1.5; background-color: #fff; border: 3px solid #FFD400; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                            <h4 style="margin:0; color:#FF5252; font-size:16px;">📍 ${placeName}</h4>
+                            <div style="font-size:12px; color:#666; margin-bottom:5px;">${finalAddr}</div>
+                            <div style="font-size:13px; margin-top:5px; color:#333;">
+                                <b>유형:</b> <span style="color:#000;">${item.type || '일반'}</span> (${item.capacity || 0}면)
+                            </div>
+                            <div style="font-size:12px; background:#f9f9f9; padding:8px; margin-top:8px; border-radius:6px; color:#555; border-left:3px solid #FFD400;">
+                                ${item.note || '꿀팁 준비 중'}
+                            </div>
+                            <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">제보자: ${userName}</div>
+                            <div style="font-size:10px; color:#ff5252; font-weight:bold; margin-top:10px; border-top:1px dashed #eee; padding-top:5px; text-align:center;">
+                                ⚠️ 구마적 한마디: "여기 꽉 찼으면 바로 제보 때려주쇼!"
+                            </div>
+                        </div>`,
+                        borderWidth: 0,
+                        disableAnchor: true,
+                        pixelOffset: new naver.maps.Point(0, -10)
+                    });
 
                     naver.maps.Event.addListener(marker, "click", function(e) {
                         if (currentInfoWindow) currentInfoWindow.close();
@@ -149,9 +153,9 @@ const infoWindow = new naver.maps.InfoWindow({
                         if (e.domEvent) e.domEvent.stopPropagation(); 
                     });
                 });
-                console.log("데이터 마커 표시 완료");
+                console.log("구마적 마커 배치 완료");
             }
-        }, 100); // 0.1초마다 지도가 생성됐는지 체크
+        }, 50); // 체크 간격을 더 좁혀서(0.05초) 속도 향상
     } catch (e) { 
         console.error("데이터 로딩 실패:", e); 
     }
