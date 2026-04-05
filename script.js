@@ -114,77 +114,94 @@ function 제보하기() {
 
 async function 데이터불러오기() {
     try {
-        console.log("구마적 데이터 취재 시작...");
+        console.log("데이터 취재 및 통합 시작...");
 
         // 1. 구글 시트 데이터 로드
         const sheetRes = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
         const sheetData = await sheetRes.json();
 
-        // 2. 서울시 API 호출 (보안 오류 해결을 위한 주소 최적화)
-        // SSL 오류 방지를 위해 http 표준 포트(8088) 주소 체계 사용
+        // 2. 서울시 API 호출 및 데이터 가공
         const apiURL = `http://openapi.seoul.go.kr:8088/${SEOUL_API_KEY}/json/GetParkingInfo/1/1000/`;
         
         let apiData = [];
         try {
-            // 브라우저 캐시 방지를 위해 fetch 옵션 추가
             const apiRes = await fetch(apiURL);
-            
-            // 응답이 정상인지 확인
-            if (!apiRes.ok) throw new Error("네트워크 응답이 좋지 않습니다.");
-            
             const apiRaw = await apiRes.json();
             
             if (apiRaw && apiRaw.GetParkingInfo && apiRaw.GetParkingInfo.row) {
-                console.log("서울시 데이터 수신 성공:", apiRaw.GetParkingInfo.row.length, "건");
-                
-                // [필터링] 유료여부(PAY_YN)가 'N'인 무료 주차장만 추출
+                // [핵심 수정] 서울시 데이터의 위도/경도 키값 및 타입 강제 변환
                 apiData = apiRaw.GetParkingInfo.row
-                    .filter(item => item.PAY_YN === "N")
-                    .map(item => ({
-                        name: item.PARKING_NAME,
-                        address: item.ADDR || "주소 불명",
-                        lat: parseFloat(item.LAT),
-                        lng: parseFloat(item.LOT),
-                        type: "상시 무료", 
-                        capacity: item.CAPACITY || 0,
-                        note: `운영시간: ${item.WEEKDAY_BEGIN_TIME}~${item.WEEKDAY_END_TIME}`,
-                        user: "서울시"
-                    }));
+                    .filter(item => item.PAY_YN === "N") // 무료만 추출
+                    .map(item => {
+                        // 서울시 데이터는 LAT(위도), LOT(경도)를 사용함
+                        const latVal = parseFloat(item.LAT);
+                        const lngVal = parseFloat(item.LOT);
+
+                        // 좌표가 유효한 숫자인지 확인 (0이거나 NaN이면 제외)
+                        if (isNaN(latVal) || isNaN(lngVal) || latVal === 0) return null;
+
+                        return {
+                            name: item.PARKING_NAME,
+                            address: item.ADDR || "주소 정보 없음",
+                            lat: latVal,
+                            lng: lngVal,
+                            type: "상시 무료", 
+                            capacity: item.CAPACITY || 0,
+                            note: `운영시간: ${item.WEEKDAY_BEGIN_TIME}~${item.WEEKDAY_END_TIME}`,
+                            user: "서울시 공공데이터"
+                        };
+                    })
+                    .filter(item => item !== null); // 무효한 데이터 제거
+                
+                console.log("서울시 무료 주차장 가공 완료:", apiData.length, "건");
             }
         } catch (apiErr) {
-            console.warn("서울시 API 호출 중 오류 발생:", apiErr.message);
+            console.warn("서울시 API 처리 중 오류:", apiErr);
         }
 
-        // 3. 데이터 병합 및 지도 현시
+        // 3. 데이터 병합 및 로컬 저장
         fetchedData = [...sheetData, ...apiData];
         localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
         
-        if (mainMap) 마커표시실행();
-        console.log("거지주차.com 데이터 통합 완료");
+        // 4. 지도에 마커 뿌리기
+        if (mainMap) {
+            마커표시실행();
+            console.log("지도 위 마커 배치 명령 하달");
+        }
 
     } catch (e) { 
-        console.error("전체 로딩 실패:", e); 
+        console.error("데이터 통합 로직 실패:", e); 
     }
 }
 
+// [보강] 마커표시실행 함수 (데이터 중복 및 렌더링 확인용)
 function 마커표시실행() {
     if (!fetchedData || !mainMap) return;
+
     fetchedData.forEach(item => {
+        // 좌표 유효성 최종 확인
+        if (!item.lat || !item.lng) return;
+
         const marker = new naver.maps.Marker({
             position: new naver.maps.LatLng(item.lat, item.lng), 
             map: mainMap,
-            icon: { content: `<div class="parking-label">${item.type}</div>`, anchor: new naver.maps.Point(20, 10) }
+            icon: { 
+                content: `<div class="parking-label">${item.type}</div>`, 
+                anchor: new naver.maps.Point(20, 10) 
+            }
         });
+
         const infoWindow = new naver.maps.InfoWindow({
             content: `<div style="padding:15px; min-width:200px; line-height:1.5; background-color: #fff; border: 3px solid #FFD400; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                <h4 style="margin:0; color:#FF5252; font-size:16px;">📍 ${item.name || '무명'}</h4>
-                <div style="font-size:12px; color:#666; margin-bottom:5px;">${item.address || '주소 불명'}</div>
-                <div style="font-size:13px; margin-top:5px; color:#333;"><b>유형:</b> ${item.type} (${item.capacity || 0}면)</div>
-                <div style="font-size:12px; background:#f9f9f9; padding:8px; margin-top:8px; border-radius:6px; color:#555; border-left:3px solid #FFD400;">${item.note || '꿀팁 준비 중'}</div>
-                <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">제보자: ${item.user || '익명'}</div>
+                <h4 style="margin:0; color:#FF5252; font-size:16px;">📍 ${item.name}</h4>
+                <div style="font-size:12px; color:#666; margin-bottom:5px;">${item.address}</div>
+                <div style="font-size:13px; margin-top:5px; color:#333;"><b>유형:</b> ${item.type} (${item.capacity}면)</div>
+                <div style="font-size:12px; background:#f9f9f9; padding:8px; margin-top:8px; border-radius:6px; color:#555; border-left:3px solid #FFD400;">${item.note}</div>
+                <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">제보자: ${item.user}</div>
             </div>`,
             borderWidth: 0, disableAnchor: true, pixelOffset: new naver.maps.Point(0, -10)
         });
+
         naver.maps.Event.addListener(marker, "click", function() {
             if (currentInfoWindow) currentInfoWindow.close();
             infoWindow.open(mainMap, marker);
