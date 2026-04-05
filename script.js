@@ -114,29 +114,60 @@ function 제보하기() {
 
 async function 데이터불러오기() {
     try {
-        console.log("통합 데이터 수신 시작 (중계 서버 모드)...");
+        console.log("데이터 수급 라인 전면 복구 시작...");
 
-        // [핵심] 이제 구글 서버가 서울시 데이터를 대신 받아와서 우리에게 한꺼번에 줍니다.
-        const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
-        const data = await response.json();
+        // 1. 구글 시트 제보 데이터 가져오기
+        const sheetRes = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
+        const sheetData = await sheetRes.json();
+        console.log("구글 시트 데이터 로드 완료:", sheetData.length, "건");
 
-        if (data && data.length > 0) {
-            fetchedData = data;
-            console.log("전체 데이터(시트+서울시) 통합 수신 성공:", fetchedData.length, "건");
+        // 2. 서울시 API 직접 호출 (보안 규격 최적화 주소)
+        // 모바일 차단을 방지하기 위해 https와 443 표준 포트 규격을 사용합니다.
+        const apiURL = `https://openapi.seoul.go.kr/${SEOUL_API_KEY}/json/GetParkInfo/1/1000/`;
+        
+        let apiData = [];
+        try {
+            const apiRes = await fetch(apiURL);
+            const apiRaw = await apiRes.json();
             
-            // 캐시 갱신 (모바일 0초 로딩용)
-            localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
-            
-            if (mainMap) 마커표시실행();
+            if (apiRaw && apiRaw.GetParkInfo && apiRaw.GetParkInfo.row) {
+                apiData = apiRaw.GetParkInfo.row
+                    .filter(item => {
+                        // 무료 조건: 유무료구분이 '무료'이거나 주말/공휴일이 '무료'인 경우
+                        const isFree = item.CHGD_FREE_NM === "무료" || 
+                                       item.SAT_CHGD_FREE_NM === "무료" || 
+                                       item.LHLDY_NM === "무료";
+                        // 좌표 유효성: 위도(LAT)가 정상 범위(서울 37도 부근)인 경우만
+                        const hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
+                        return isFree && hasCoords;
+                    })
+                    .map(item => ({
+                        name: item.PKLT_NM,
+                        address: item.ADDR,
+                        lat: parseFloat(item.LAT),
+                        lng: parseFloat(item.LOT),
+                        type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "조건부 무료",
+                        capacity: item.TPKCT || 0,
+                        note: `평일: ${item.WD_OPER_BGNG_TM}~${item.WD_OPER_END_TM} / 토·공휴일: ${item.SAT_CHGD_FREE_NM}/${item.LHLDY_NM}`,
+                        user: "서울시"
+                    }));
+                console.log("서울시 데이터 발굴 성공:", apiData.length, "건");
+            }
+        } catch (apiErr) {
+            console.error("서울시 API 호출 실패 (네트워크/보안):", apiErr);
         }
+
+        // 3. 데이터 병합 및 지도 현시
+        fetchedData = [...sheetData, ...apiData];
+        localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
+        
+        if (mainMap) {
+            마커표시실행();
+            console.log("전체 마커 지도 배치 명령 완료");
+        }
+
     } catch (e) { 
-        console.error("통합 로딩 실패:", e); 
-        // 네트워크 장애 시 기존 캐시라도 활용
-        const cached = localStorage.getItem('gj-cache');
-        if (cached) {
-            fetchedData = JSON.parse(cached);
-            if (mainMap) 마커표시실행();
-        }
+        console.error("통합 로딩 중 치명적 오류:", e); 
     }
 }
 
