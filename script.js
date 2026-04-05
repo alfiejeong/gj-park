@@ -138,39 +138,19 @@ async function 구글시트데이터취재() {
 
 async function 서울시데이터취재() {
     try {
-        // 보안 오류(CORS) 방지를 위해 표준 HTTPS 경로로 접근합니다.
-        const apiURL = `https://openapi.seoul.go.kr/${SEOUL_API_KEY}/json/GetParkInfo/1/1000/`;
+        // [핵심 수정] 서울시 API 직접 호출 대신, 우리 GAS 서버에 "서울시 꺼 가져와"라고 요청합니다.
+        // SCRIPT_URL 뒤에 파라미터를 붙여 구분합니다.
+        const apiURL = SCRIPT_URL + "?type=seoul"; 
+        
         const response = await fetch(apiURL);
-        const json = await response.json();
+        const data = await response.json();
 
-        if (json && json.GetParkInfo && json.GetParkInfo.row) {
-            const rows = json.GetParkInfo.row;
-            let seoulCount = 0;
-
-            rows.forEach(item => {
-                const isFree = item.CHGD_FREE_NM === "무료" || item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료";
-                const hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
-
-                if (isFree && hasCoords) {
-                    const mappedItem = {
-                        name: item.PKLT_NM,
-                        address: item.ADDR,
-                        lat: parseFloat(item.LAT),
-                        lng: parseFloat(item.LOT),
-                        type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "주말 무료",
-                        capacity: item.TPKCT || 0,
-                        note: `평일 운영: ${item.WD_OPER_BGNG_TM}~${item.WD_OPER_END_TM}`,
-                        user: "서울시"
-                    };
-                    마커생성실행(mappedItem, "서울시");
-                    seoulCount++;
-                }
-            });
-            console.log("✅ 서울시 데이터 발굴 성공:", seoulCount, "건");
+        if (data && data.length > 0) {
+            data.forEach(item => 마커생성실행(item, "서울시"));
+            console.log("✅ 서울시 데이터 우회 수신 성공:", data.length, "건");
         }
     } catch (e) {
-        console.error("❌ 서울시 API 보안 차단 또는 타임아웃:", e);
-        console.log("💡 팁: 브라우저가 서울시 서버를 차단 중일 수 있습니다.");
+        console.error("❌ 서울시 데이터 우회 호출 실패:", e);
     }
 }
 
