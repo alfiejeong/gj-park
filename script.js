@@ -5,11 +5,14 @@ var currentInfoWindow = null;
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzQsFeRNYbSGxBQpiqnZFBNoLaDHE3bNkJuPukTEhcZeUWj4n1ayM_Q40qCuqUzXNFw/exec";
 
 window.onload = function() {
-    // 닉네임 불러오기
+    // 1. 닉네임 불러오기
     const savedNick = localStorage.getItem('gj-nick');
     if (savedNick) document.getElementById('user-nick').value = savedNick;
 
-    // 시작 시 위치 파악
+    // [핵심 최적화] 지도가 그려지길 기다리지 않고 바로 데이터부터 호출 시작!
+    데이터불러오기();
+
+    // 2. 위치 파악 및 지도 생성 시작 (데이터 호출과 동시에 진행됨)
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(success, error);
     } else {
@@ -28,26 +31,23 @@ function error() {
 }
 
 function startMap(location) {
-    // 변수명을 map으로 통일합니다
+    // 이미 데이터 호출은 위에서 시작된 상태입니다.
     map = new naver.maps.Map('map', {
         center: location,
         zoom: 16
     });
 
-// 지도 클릭 시 열려있는 정보창 닫기 및 제보 마커 제거
+    // 지도 클릭 시 초기화 로직 (기존 유지)
     naver.maps.Event.addListener(map, 'click', function() {
         if (currentInfoWindow) {
             currentInfoWindow.close();
             currentInfoWindow = null;
         }
-        // [보완 3] 제보 도중 지도 클릭 시 임시 마커 제거
         if (reportMarker) {
             reportMarker.setMap(null);
             reportMarker = null;
         }
     });
-    
-    데이터불러오기();
 }
 
 // [내 위치] 버튼 기능
@@ -95,38 +95,48 @@ function 제보하기() {
     });
 }
 
-// [보완 1] 이미 저장된 데이터: 정적인 화이트+옐로우 라벨로 표시
+// 데이터불러오기 함수는 기존 코드를 유지하되, 
+// map 객체가 생성되었는지 확인하는 안전장치만 살짝 추가합니다.
 async function 데이터불러오기() {
     try {
         const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
         const data = await response.json();
 
-        data.forEach(item => {
-            const marker = new naver.maps.Marker({
-                position: new naver.maps.LatLng(item.lat, item.lng), 
-                map: map,
-                icon: { 
-                    content: `<div class="parking-label">${item.type}</div>`, 
-                    anchor: new naver.maps.Point(20, 10) 
-                }
-            });
+        // 지도가 생성될 때까지 아주 잠시 대기 (이미 생성되었다면 바로 통과)
+        const checkMap = setInterval(() => {
+            if (map) {
+                clearInterval(checkMap);
+                data.forEach(item => {
+                    const marker = new naver.maps.Marker({
+                        position: new naver.maps.LatLng(item.lat, item.lng), 
+                        map: map,
+                        icon: { 
+                            content: `<div class="parking-label">${item.type}</div>`, 
+                            anchor: new naver.maps.Point(20, 10) 
+                        }
+                    });
 
-            // (정보창 로직은 기존 유지...)
-            const infoWindow = new naver.maps.InfoWindow({
-                content: `...기존 상세정보 HTML...`,
-                borderWidth: 0,
-                disableAnchor: true,
-                pixelOffset: new naver.maps.Point(0, -10)
-            });
+                    // (정보창 및 클릭 리스너 로직은 기존 유지...)
+                    const infoWindow = new naver.maps.InfoWindow({
+                        content: `...기존 상세정보 HTML...`, // 아까 복구한 코드를 넣으세요
+                        borderWidth: 0,
+                        disableAnchor: true,
+                        pixelOffset: new naver.maps.Point(0, -10)
+                    });
 
-            naver.maps.Event.addListener(marker, "click", function(e) {
-                if (currentInfoWindow) currentInfoWindow.close();
-                infoWindow.open(map, marker);
-                currentInfoWindow = infoWindow;
-                if (e.domEvent) e.domEvent.stopPropagation(); 
-            });
-        });
-    } catch (e) { console.error(e); }
+                    naver.maps.Event.addListener(marker, "click", function(e) {
+                        if (currentInfoWindow) currentInfoWindow.close();
+                        infoWindow.open(map, marker);
+                        currentInfoWindow = infoWindow;
+                        if (e.domEvent) e.domEvent.stopPropagation(); 
+                    });
+                });
+                console.log("데이터 마커 표시 완료");
+            }
+        }, 100); // 0.1초마다 지도가 생성됐는지 체크
+    } catch (e) { 
+        console.error("데이터 로딩 실패:", e); 
+    }
 }
 
 // [보완 3] 제보창 닫기/취소 시 마커 및 좌표 완전 초기화
