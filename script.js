@@ -114,13 +114,11 @@ function 제보하기() {
 
 async function 데이터불러오기() {
     try {
-        console.log("데이터 취재 및 통합 시작...");
+        console.log("데이터 통합 취재 재가동...");
 
-        // 1. 구글 시트 데이터 로드
         const sheetRes = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
         const sheetData = await sheetRes.json();
 
-        // 2. 서울시 API 호출 및 데이터 가공
         const apiURL = `http://openapi.seoul.go.kr:8088/${SEOUL_API_KEY}/json/GetParkingInfo/1/1000/`;
         
         let apiData = [];
@@ -129,15 +127,22 @@ async function 데이터불러오기() {
             const apiRaw = await apiRes.json();
             
             if (apiRaw && apiRaw.GetParkingInfo && apiRaw.GetParkingInfo.row) {
-                // [핵심 수정] 서울시 데이터의 위도/경도 키값 및 타입 강제 변환
+                // [핵심 수정] 0건 방지를 위한 '그물망 필터링'
                 apiData = apiRaw.GetParkingInfo.row
-                    .filter(item => item.PAY_YN === "N") // 무료만 추출
+                    .filter(item => {
+                        // 1. 유료여부(PAY_YN)가 'N'이거나 'n'인 경우
+                        const isPayN = item.PAY_YN && item.PAY_YN.toUpperCase() === "N";
+                        // 2. 요금명칭(PAY_NM)에 '무료'라는 단어가 포함된 경우
+                        const isFreeName = item.PAY_NM && item.PAY_NM.includes("무료");
+                        // 3. 야간무료개방(NIGHT_FREE_OPEN_NM)이 '무료'인 경우
+                        const isNightFree = item.NIGHT_FREE_OPEN_NM && item.NIGHT_FREE_OPEN_NM.includes("무료");
+
+                        return isPayN || isFreeName || isNightFree;
+                    })
                     .map(item => {
-                        // 서울시 데이터는 LAT(위도), LOT(경도)를 사용함
                         const latVal = parseFloat(item.LAT);
                         const lngVal = parseFloat(item.LOT);
 
-                        // 좌표가 유효한 숫자인지 확인 (0이거나 NaN이면 제외)
                         if (isNaN(latVal) || isNaN(lngVal) || latVal === 0) return null;
 
                         return {
@@ -145,63 +150,50 @@ async function 데이터불러오기() {
                             address: item.ADDR || "주소 정보 없음",
                             lat: latVal,
                             lng: lngVal,
-                            type: "상시 무료", 
+                            // 실제 데이터에 맞춰 유형 자동 할당
+                            type: (item.PAY_YN === "N" || (item.PAY_NM && item.PAY_NM.includes("무료"))) ? "상시 무료" : "밤샘 무료", 
                             capacity: item.CAPACITY || 0,
-                            note: `운영시간: ${item.WEEKDAY_BEGIN_TIME}~${item.WEEKDAY_END_TIME}`,
+                            note: `야간개방: ${item.NIGHT_FREE_OPEN_NM || '정보없음'} / 운영: ${item.WEEKDAY_BEGIN_TIME}~${item.WEEKDAY_END_TIME}`,
                             user: "서울시 공공데이터"
                         };
                     })
-                    .filter(item => item !== null); // 무효한 데이터 제거
+                    .filter(item => item !== null);
                 
-                console.log("서울시 무료 주차장 가공 완료:", apiData.length, "건");
+                console.log("서울시 무료 주차장 발굴 성공:", apiData.length, "건");
+            } else {
+                console.error("서울시 API 응답 구조가 평소와 다릅니다. 확인 필요.");
             }
         } catch (apiErr) {
-            console.warn("서울시 API 처리 중 오류:", apiErr);
+            console.warn("서울시 데이터 수신 중 통신 장애:", apiErr);
         }
 
-        // 3. 데이터 병합 및 로컬 저장
         fetchedData = [...sheetData, ...apiData];
         localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
         
-        // 4. 지도에 마커 뿌리기
-        if (mainMap) {
-            마커표시실행();
-            console.log("지도 위 마커 배치 명령 하달");
-        }
+        if (mainMap) 마커표시실행();
+        console.log("거지주차.com 데이터 최종 통합 완료");
 
-    } catch (e) { 
-        console.error("데이터 통합 로직 실패:", e); 
-    }
+    } catch (e) { console.error("프로세스 중단:", e); }
 }
 
-// [보강] 마커표시실행 함수 (데이터 중복 및 렌더링 확인용)
 function 마커표시실행() {
     if (!fetchedData || !mainMap) return;
-
     fetchedData.forEach(item => {
-        // 좌표 유효성 최종 확인
-        if (!item.lat || !item.lng) return;
-
         const marker = new naver.maps.Marker({
             position: new naver.maps.LatLng(item.lat, item.lng), 
             map: mainMap,
-            icon: { 
-                content: `<div class="parking-label">${item.type}</div>`, 
-                anchor: new naver.maps.Point(20, 10) 
-            }
+            icon: { content: `<div class="parking-label">${item.type}</div>`, anchor: new naver.maps.Point(20, 10) }
         });
-
         const infoWindow = new naver.maps.InfoWindow({
             content: `<div style="padding:15px; min-width:200px; line-height:1.5; background-color: #fff; border: 3px solid #FFD400; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                <h4 style="margin:0; color:#FF5252; font-size:16px;">📍 ${item.name}</h4>
-                <div style="font-size:12px; color:#666; margin-bottom:5px;">${item.address}</div>
-                <div style="font-size:13px; margin-top:5px; color:#333;"><b>유형:</b> ${item.type} (${item.capacity}면)</div>
-                <div style="font-size:12px; background:#f9f9f9; padding:8px; margin-top:8px; border-radius:6px; color:#555; border-left:3px solid #FFD400;">${item.note}</div>
-                <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">제보자: ${item.user}</div>
+                <h4 style="margin:0; color:#FF5252; font-size:16px;">📍 ${item.name || '무명'}</h4>
+                <div style="font-size:12px; color:#666; margin-bottom:5px;">${item.address || '주소 불명'}</div>
+                <div style="font-size:13px; margin-top:5px; color:#333;"><b>유형:</b> ${item.type} (${item.capacity || 0}면)</div>
+                <div style="font-size:12px; background:#f9f9f9; padding:8px; margin-top:8px; border-radius:6px; color:#555; border-left:3px solid #FFD400;">${item.note || '꿀팁 준비 중'}</div>
+                <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">제보자: ${item.user || '익명'}</div>
             </div>`,
             borderWidth: 0, disableAnchor: true, pixelOffset: new naver.maps.Point(0, -10)
         });
-
         naver.maps.Event.addListener(marker, "click", function() {
             if (currentInfoWindow) currentInfoWindow.close();
             infoWindow.open(mainMap, marker);
