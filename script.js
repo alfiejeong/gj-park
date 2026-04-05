@@ -1,6 +1,6 @@
 var mainMap = null, reportMarker = null, selectedCoord = null;
 var currentInfoWindow = null; // 현재 열린 정보창을 저장할 변수 추가
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxLATr--8L1UTDKsZQLYfhueUeuVb9k7xIrtGO_2jxL4rJNMxfexiFJasQPjKitBWRH/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzQsFeRNYbSGxBQpiqnZFBNoLaDHE3bNkJuPukTEhcZeUWj4n1ayM_Q40qCuqUzXNFw/exec";
 
 window.onload = function() {
     // 1. 기본 중심점 (위치 권한 거부 시 대비)
