@@ -3,45 +3,34 @@ var currentInfoWindow = null; // 현재 열린 정보창을 저장할 변수 추
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzQsFeRNYbSGxBQpiqnZFBNoLaDHE3bNkJuPukTEhcZeUWj4n1ayM_Q40qCuqUzXNFw/exec";
 
 window.onload = function() {
-    // 1. 기본 중심점 (위치 권한 거부 시 대비)
-    var defaultCenter = new naver.maps.LatLng(37.5665, 126.9780); 
-    
-    // 2. 지도 먼저 생성
-    mainMap = new naver.maps.Map('map', {
-        center: defaultCenter,
-        zoom: 15,
-        logoControl: false
-    });
-
-    // 3. [핵심 추가] 접속 즉시 내 위치 찾기
+    // 1. 일단 위치 정보부터 물어본다
     if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(function(pos) {
-            var myLoc = new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-            mainMap.setCenter(myLoc); // 내 위치로 지도 이동
-            mainMap.setZoom(16);      // 보기 좋게 줌인
-        }, function(err) {
-            console.warn("위치 권한이 거부되었습니다. 기본 위치로 표시합니다.");
-        });
+        navigator.geolocation.getCurrentPosition(success, error);
+    } else {
+        // GPS 미지원 시 기본 좌표(서울역 등)로 시작
+        startMap(new naver.maps.LatLng(37.555145, 126.970590));
     }
-
-    // 기존 닉네임 로드 및 클릭 이벤트 로직은 이 아래에 그대로 유지...
-    const savedNick = localStorage.getItem('gj-nick');
-    if(savedNick) document.getElementById('user-nick').value = savedNick;
-
-naver.maps.Event.addListener(mainMap, 'click', function(e) {
-    // 추가: 지도를 클릭하면 열려 있는 정보창을 닫음
-    if (currentInfoWindow) {
-        currentInfoWindow.close();
-        currentInfoWindow = null;
-    }
-    
-    // (기존 역지오코딩 및 제보 핀 생성 로직은 유지)
-    selectedCoord = e.coord;
-    // ... 이하 생략 ...
-});
-
-    데이터불러오기();
 };
+
+function success(position) {
+    // 2. 위치 가져오기 성공 시 해당 좌표로 지도 생성
+    const myLocation = new naver.maps.LatLng(position.coords.latitude, position.coords.longitude);
+    startMap(myLocation);
+}
+
+function error() {
+    // 3. 권한 거부 등 실패 시 서울역으로 생성
+    console.warn("위치 권한 거부됨. 기본 위치로 시작합니다.");
+    startMap(new naver.maps.LatLng(37.555145, 126.970590));
+}
+
+function startMap(location) {
+    map = new naver.maps.Map('map', {
+        center: location,
+        zoom: 16
+    });
+    데이터불러오기(); // 지도 생성 후 데이터 로드
+}
 
 async function 데이터불러오기() {
     try {
