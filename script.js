@@ -2,7 +2,7 @@
 var mainMap = null, reportMarker = null, selectedCoord = null;
 var currentInfoWindow = null; 
 var fetchedData = null; 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx5l9uTDxRuAnFjwnjhj0nsnp2yMLIyx7nnFziLynOyS0eFZ2Nj0WwzGX30-fMXQjUR/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZbCGEoqgC_2MQG7DTvGFgVNL8zcTOX3uJjR1xGTwYBV39yMi8iYlGohnNcNmALV3C/exec";
 
 // [신규 추가] 서울시 API 인증키
 const SEOUL_API_KEY = "7353726f51616c663130305873426c73";
@@ -116,22 +116,22 @@ async function 데이터불러오기() {
     try {
         console.log("통합 데이터 수신 시작 (중계 서버 모드)...");
 
-        // 1. 구글 앱스 스크립트(GAS) 한 곳에서 모든 데이터를 받아옵니다.
+        // [핵심] 이제 구글 서버가 서울시 데이터를 대신 받아와서 우리에게 한꺼번에 줍니다.
         const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
         const data = await response.json();
 
         if (data && data.length > 0) {
             fetchedData = data;
-            console.log("전체 데이터 수신 성공:", fetchedData.length, "건");
+            console.log("전체 데이터(시트+서울시) 통합 수신 성공:", fetchedData.length, "건");
             
-            // 캐시 갱신
+            // 캐시 갱신 (모바일 0초 로딩용)
             localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
             
             if (mainMap) 마커표시실행();
         }
     } catch (e) { 
         console.error("통합 로딩 실패:", e); 
-        // 실패 시 이전 캐시라도 보여줍니다.
+        // 네트워크 장애 시 기존 캐시라도 활용
         const cached = localStorage.getItem('gj-cache');
         if (cached) {
             fetchedData = JSON.parse(cached);
@@ -204,18 +204,18 @@ function doGet(e) {
     });
   }
 
-  // 2. 서울시 공영주차장 API 호출 (구글 서버가 직접 수행하므로 보안 차단 없음)
-  var seoulKey = "7353726f51616c663130305873426c73";
-  var apiURL = "http://openapi.seoul.go.kr:8088/" + seoulKey + "/json/GetParkInfo/1/1000/";
+  // 2. [핵심] 구글 서버가 서울시 API를 직접 호출 (보안 차단 없음)
+  var seoulApiKey = "7353726f51616c663130305873426c73";
+  // 구글 서버는 외부망 연결이 자유로우므로 http 포트 호출도 문제없습니다.
+  var apiURL = "http://openapi.seoul.go.kr:8088/" + seoulApiKey + "/json/GetParkInfo/1/1000/";
   
   try {
     var response = UrlFetchApp.fetch(apiURL);
     var json = JSON.parse(response.getContentText());
     
     if (json.GetParkInfo && json.GetParkInfo.row) {
-      var seoulRows = json.GetParkInfo.row;
-      seoulRows.forEach(function(item) {
-        // [필터링] 무료 주차장만 골라내기
+      json.GetParkInfo.row.forEach(function(item) {
+        // [필터링] 무료 주차장만 골라내기 (명세서 기반)
         var isFree = (item.CHGD_FREE_NM === "무료" || item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료");
         var hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
 
@@ -225,16 +225,16 @@ function doGet(e) {
             address: item.ADDR,
             lat: parseFloat(item.LAT),
             lng: parseFloat(item.LOT),
-            type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "조건부 무료",
+            type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "주말 무료",
             capacity: item.TPKCT || 0,
-            note: "평일: " + item.WD_OPER_BGNG_TM + "~" + item.WD_OPER_END_TM + " / 서울시 공공데이터",
+            note: "평일: " + item.WD_OPER_BGNG_TM + "~" + item.WD_OPER_END_TM + " / 서울 공공데이터",
             user: "서울시"
           });
         }
       });
     }
   } catch (err) {
-    // API 오류 시 제보 데이터만이라도 보냄
+    // API 장애 시 제보 데이터만이라도 전송
   }
 
   // 3. 통합된 데이터를 JSON으로 반환
