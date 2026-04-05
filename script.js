@@ -118,7 +118,21 @@ async function 데이터불러오기() {
 
                     // (정보창 및 클릭 리스너 로직은 기존 유지...)
                     const infoWindow = new naver.maps.InfoWindow({
-                        content: `...기존 상세정보 HTML...`, // 아까 복구한 코드를 넣으세요
+                        content: `
+                <div style="padding:15px; min-width:200px; line-height:1.5; background-color: #fff; border: 3px solid #FFD400; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                    <h4 style="margin:0; color:#FF5252; font-size:16px;">📍 ${item.name}</h4>
+                    <div style="font-size:12px; color:#666; margin-bottom:5px;">${item.address}</div>
+                    <div style="font-size:13px; margin-top:5px; color:#333;">
+                        <b>유형:</b> <span style="color:#000;">${item.type}</span> (${item.capacity}면)
+                    </div>
+                    <div style="font-size:12px; background:#f9f9f9; padding:8px; margin-top:8px; border-radius:6px; color:#555; border-left:3px solid #FFD400;">
+                        ${item.note}
+                    </div>
+                    <div style="font-size:11px; color:#999; margin-top:8px; text-align:right;">제보자: ${item.user}</div>
+                    <div style="font-size:10px; color:#ff5252; font-weight:bold; margin-top:10px; border-top:1px dashed #eee; padding-top:5px; text-align:center;">
+                        ⚠️ 구마적 한마디: "여기 꽉 찼으면 바로 제보 때려주쇼!"
+                    </div>
+                </div>`,
                         borderWidth: 0,
                         disableAnchor: true,
                         pixelOffset: new naver.maps.Point(0, -10)
