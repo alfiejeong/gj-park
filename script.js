@@ -2,7 +2,7 @@
 var mainMap = null, reportMarker = null, selectedCoord = null;
 var currentInfoWindow = null; 
 var fetchedData = null; 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbytKkWpWDrqEebLCdxmcSqeSMZYT4YVd7jtzyMAGr02Kwebqj6j2jxXMOUhfIFOmaAH/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx5l9uTDxRuAnFjwnjhj0nsnp2yMLIyx7nnFziLynOyS0eFZ2Nj0WwzGX30-fMXQjUR/exec";
 
 // [신규 추가] 서울시 API 인증키
 const SEOUL_API_KEY = "7353726f51616c663130305873426c73";
@@ -114,61 +114,34 @@ function 제보하기() {
 
 async function 데이터불러오기() {
     try {
-        console.log("모바일 환경 데이터 송고 최적화 개시...");
+        console.log("보안 우회형 데이터 취재 개시...");
 
-        // 1. 구글 시트 데이터 로드
-        const sheetRes = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
-        const sheetData = await sheetRes.json();
+        // [핵심 수정] 구글 시트 데이터와 서울시 데이터를 GAS 서버가 한꺼번에 묶어서 보내주도록 요청
+        // 보안 오류(SSL)가 발생하는 브라우저 직접 호출을 중단합니다.
+        const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
+        const data = await response.json();
 
-        // 2. 서울시 API 호출 (모바일 보안 프로토콜 대응)
-        // [핵심 수정] 모바일 브라우저의 보안 차단을 막기 위해 https를 우선 시도합니다.
-        const apiURL = `https://openapi.seoul.go.kr:8088/${SEOUL_API_KEY}/json/GetParkInfo/1/1000/`;
-        
-        let apiData = [];
-        try {
-            // 모바일에서 캐시된 0건 데이터를 가져오지 않도록 cache 옵션 추가
-            const apiRes = await fetch(apiURL, { cache: "no-store" });
-            const apiRaw = await apiRes.json();
+        if (data && data.length > 0) {
+            fetchedData = data;
+            console.log("통합 데이터 수신 성공:", fetchedData.length, "건");
             
-            if (apiRaw && apiRaw.GetParkInfo && apiRaw.GetParkInfo.row) {
-                apiData = apiRaw.GetParkInfo.row
-                    .filter(item => {
-                        // 명세서 기반 무료 데이터 판별
-                        const isAlwaysFree = item.CHGD_FREE_NM === "무료";
-                        const isWeekendFree = item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료";
-                        const isNightFree = item.NGHT_FREE_OPN_YN_NAME === "야간 개방";
-                        const hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30; // 좌표 유효성 정밀 체크
-
-                        return (isAlwaysFree || isWeekendFree || isNightFree) && hasCoords;
-                    })
-                    .map(item => ({
-                        name: item.PKLT_NM,
-                        address: item.ADDR,
-                        lat: parseFloat(item.LAT),
-                        lng: parseFloat(item.LOT),
-                        type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "조건부 무료",
-                        capacity: item.TPKCT || 0,
-                        note: `평일: ${item.WD_OPER_BGNG_TM}~${item.WD_OPER_END_TM} / 토요일: ${item.SAT_CHGD_FREE_NM} / 공휴일: ${item.LHLDY_NM}`,
-                        user: "서울시"
-                    }));
-                
-                console.log(`모바일 팩트 체크 완료: ${apiData.length}건 발굴`);
-            }
-        } catch (apiErr) {
-            console.warn("모바일 네트워크 환경 이슈로 서울시 데이터 수신 지연:", apiErr);
-            // https 실패 시 http로 재시도하는 로직은 브라우저 보안 정책상 모바일에서 거부될 수 있음
+            // 캐시 강제 갱신
+            localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
+            
+            if (mainMap) 마커표시실행();
+        } else {
+            console.warn("수신된 데이터가 없습니다.");
         }
 
-        // 3. 데이터 병합 및 강제 갱신
-        fetchedData = [...sheetData, ...apiData];
-        
-        // [중요] 기존 모바일 캐시가 0건일 수 있으므로 덮어쓰기 강제 실행
-        localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
-        
-        if (mainMap) 마커표시실행();
-        console.log("거지주차.com 모바일 통합 현시 성공");
-
-    } catch (e) { console.error("모바일 프로세스 중단:", e); }
+    } catch (e) { 
+        console.error("모바일 통합 로딩 실패:", e); 
+        // 네트워크 오류 시 캐시 데이터라도 노출
+        const cached = localStorage.getItem('gj-cache');
+        if (cached) {
+            fetchedData = JSON.parse(cached);
+            if (mainMap) 마커표시실행();
+        }
+    }
 }
 
 function 마커표시실행() {
