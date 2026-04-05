@@ -114,34 +114,56 @@ function 제보하기() {
 
 async function 데이터불러오기() {
     try {
-        console.log("보안 우회형 데이터 취재 개시...");
+        console.log("보안 규격 준수 데이터 취재 시작...");
 
-        // [핵심 수정] 구글 시트 데이터와 서울시 데이터를 GAS 서버가 한꺼번에 묶어서 보내주도록 요청
-        // 보안 오류(SSL)가 발생하는 브라우저 직접 호출을 중단합니다.
-        const response = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
-        const data = await response.json();
+        // 1. 구글 시트 데이터 로드
+        const sheetRes = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
+        const sheetData = await sheetRes.json();
 
-        if (data && data.length > 0) {
-            fetchedData = data;
-            console.log("통합 데이터 수신 성공:", fetchedData.length, "건");
+        // 2. [핵심 수정] 서울시 API 호출 (HTTPS 대응 및 포트 제거)
+        // 브라우저 보안 정책(Mixed Content) 해결을 위해 https 표준 포트로 호출합니다.
+        const apiURL = `https://openapi.seoul.go.kr/${SEOUL_API_KEY}/json/GetParkInfo/1/1000/`;
+        
+        let apiData = [];
+        try {
+            const apiRes = await fetch(apiURL);
+            const apiRaw = await apiRes.json();
             
-            // 캐시 강제 갱신
-            localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
-            
-            if (mainMap) 마커표시실행();
-        } else {
-            console.warn("수신된 데이터가 없습니다.");
+            if (apiRaw && apiRaw.GetParkInfo && apiRaw.GetParkInfo.row) {
+                apiData = apiRaw.GetParkInfo.row
+                    .filter(item => {
+                        // 무료 데이터 판별 (CHGD_FREE_NM: 유무료구분명)
+                        const isFree = item.CHGD_FREE_NM === "무료" || item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료";
+                        // 좌표 유효성 체크 (위도 LAT, 경도 LOT)
+                        const hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
+
+                        return isFree && hasCoords;
+                    })
+                    .map(item => ({
+                        name: item.PKLT_NM,
+                        address: item.ADDR,
+                        lat: parseFloat(item.LAT),
+                        lng: parseFloat(item.LOT),
+                        type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "조건부 무료",
+                        capacity: item.TPKCT || 0,
+                        note: `평일: ${item.WD_OPER_BGNG_TM}~${item.WD_OPER_END_TM} / 토요일: ${item.SAT_CHGD_FREE_NM} / 공휴일: ${item.LHLDY_NM}`,
+                        user: "서울시"
+                    }));
+                
+                console.log(`보안 통과 및 데이터 발굴: ${apiData.length}건`);
+            }
+        } catch (apiErr) {
+            console.error("서울시 API 보안 인증 또는 네트워크 오류:", apiErr);
         }
 
-    } catch (e) { 
-        console.error("모바일 통합 로딩 실패:", e); 
-        // 네트워크 오류 시 캐시 데이터라도 노출
-        const cached = localStorage.getItem('gj-cache');
-        if (cached) {
-            fetchedData = JSON.parse(cached);
-            if (mainMap) 마커표시실행();
-        }
-    }
+        // 3. 데이터 병합 및 캐시
+        fetchedData = [...sheetData, ...apiData];
+        localStorage.setItem('gj-cache', JSON.stringify(fetchedData));
+        
+        if (mainMap) 마커표시실행();
+        console.log("거지주차.com 보안 최적화 이식 완료");
+
+    } catch (e) { console.error("데이터 통합 프로세스 실패:", e); }
 }
 
 function 마커표시실행() {
