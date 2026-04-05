@@ -11,22 +11,16 @@
     <div class="header">
         <div style="text-align: center;">
             <h1>거지주차.com</h1>
-            <div style="font-size: 10px; font-weight: bold; color: #444; margin-top: -2px;">
-                BY 구마적
-            </div>
+            <div style="font-size: 10px; font-weight: bold; color: #444; margin-top: -2px;">BY 구마적</div>
         </div>
     </div>
-
     <div id="map"></div>
-
     <div class="controls">
         <button class="btn" onclick="데이터불러오기()">🔄 갱신</button>
         <button class="btn" onclick="내위치찾기()">📍 내 위치</button>
         <button class="btn primary" onclick="제보하기()">🚀 명당 제보</button>
     </div>
-
     <div id="modal-overlay" class="modal-overlay" onclick="닫기제보창()"></div>
-
     <div id="report-modal" class="modal">
         <h3 style="text-align:center; margin-top:0;">🚀 내비 연동 제보</h3>
         <div class="input-group"><label>제보자</label><input type="text" id="user-nick"></div>
@@ -39,7 +33,6 @@
         <div class="input-group"><label>상세내용 (꿀팁)</label><textarea id="place-note"></textarea></div>
         <button id="submit-btn" onclick="저장제보()" class="main-submit">제보 완료하기</button>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>
