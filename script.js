@@ -138,23 +138,25 @@ async function 구글시트데이터취재() {
 
 async function 서울시데이터취재() {
     try {
-        console.log("서울시 데이터 특파원(GAS) 파견...");
+        console.log("서울시 특파원 파견 중...");
         
-        // [핵심 수정] 직접 호출 대신 구글 스크립트를 통해 서울시 데이터를 요청합니다.
-        // SCRIPT_URL은 기존에 정의된 변수를 그대로 사용합니다.
-        const apiURL = SCRIPT_URL + "?type=seoul"; 
+        // [수정] 파라미터 전달 방식을 더 명확하게 변경
+        const targetUrl = `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`;
         
-        const response = await fetch(apiURL);
+        const response = await fetch(targetUrl);
         const data = await response.json();
 
         if (data && data.length > 0) {
-            data.forEach(item => 마커생성실행(item, "서울시"));
+            // [검증] 수신된 첫 번째 데이터의 이름을 확인하여 '진짜 서울시 데이터'인지 판별
+            console.log("✅ 서울시 수신 데이터 첫 항목:", data[0].name);
             console.log("✅ 서울시 데이터 우회 수신 성공:", data.length, "건");
-        } else {
-            console.warn("⚠️ 수신된 서울시 무료 주차장 데이터가 없습니다.");
+            
+            data.forEach(item => {
+                if(item.lat > 0) 마커생성실행(item, "서울시");
+            });
         }
     } catch (e) {
-        console.error("❌ 서울시 데이터 우회 호출 실패:", e);
+        console.error("❌ 서울시 우회 호출 실패:", e);
     }
 }
 
@@ -240,53 +242,63 @@ async function 저장제보() {
 }
 
 function doGet(e) {
-  // 1. 내 구글 시트 데이터 (제보 내역) 가져오기
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-  var rows = sheet.getDataRange().getValues();
-  var combinedData = [];
+  // [보정] 파라미터 존재 여부를 더 확실하게 체크합니다.
+  var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "sheet";
   
-  for (var i = 1; i < rows.length; i++) {
-    combinedData.push({
-      user: rows[i][0], address: rows[i][1], name: rows[i][2],
-      type: rows[i][3], capacity: rows[i][4], note: rows[i][5],
-      lat: parseFloat(rows[i][6]), lng: parseFloat(rows[i][7])
-    });
-  }
-
-  // 2. [핵심] 구글 서버가 서울시 API를 직접 호출 (보안 차단 없음)
-  var seoulApiKey = "7353726f51616c663130305873426c73";
-  // 구글 서버는 외부망 연결이 자유로우므로 http 호출도 문제없습니다.
-  var apiURL = "http://openapi.seoul.go.kr:8088/" + seoulApiKey + "/json/GetParkInfo/1/1000/";
-  
-  try {
-    var response = UrlFetchApp.fetch(apiURL);
-    var json = JSON.parse(response.getContentText());
+  // 1. 서울시 데이터 요청 모드 (type=seoul)
+  if (type === "seoul") {
+    var seoulKey = "7353726f51616c663130305873426c73";
+    var apiURL = "http://openapi.seoul.go.kr:8088/" + seoulKey + "/json/GetParkInfo/1/1000/";
     
-    if (json.GetParkInfo && json.GetParkInfo.row) {
-      json.GetParkInfo.row.forEach(function(item) {
-        // [필터링] 무료 주차장만 골라내기 (명세서 기반)
-        var isFree = (item.CHGD_FREE_NM === "무료" || item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료");
-        var hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
+    try {
+      var response = UrlFetchApp.fetch(apiURL, { "muteHttpExceptions": true });
+      var json = JSON.parse(response.getContentText());
+      var seoulData = [];
+      
+      if (json.GetParkInfo && json.GetParkInfo.row) {
+        json.GetParkInfo.row.forEach(function(item) {
+          // 무료 필터링
+          var isFree = (item.CHGD_FREE_NM === "무료" || item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료");
+          var hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
 
-        if (isFree && hasCoords) {
-          combinedData.push({
-            name: item.PKLT_NM,
-            address: item.ADDR,
-            lat: parseFloat(item.LAT),
-            lng: parseFloat(item.LOT),
-            type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "주말 무료",
-            capacity: item.TPKCT || 0,
-            note: "평일: " + item.WD_OPER_BGNG_TM + "~" + item.WD_OPER_END_TM + " / 서울 공공데이터",
-            user: "서울시"
-          });
-        }
+          if (isFree && hasCoords) {
+            seoulData.push({
+              name: item.PKLT_NM,
+              address: item.ADDR,
+              lat: parseFloat(item.LAT),
+              lng: parseFloat(item.LOT),
+              type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "주말 무료",
+              capacity: item.TPKCT || 0,
+              note: "평일 운영: " + item.WD_OPER_BGNG_TM + "~" + item.WD_OPER_END_TM,
+              user: "서울시"
+            });
+          }
+        });
+      }
+      return createJsonResponse(seoulData);
+    } catch (err) {
+      return createJsonResponse([{name: "API에러", lat: 0, lng: 0}]); // 에러 추적용
+    }
+  } 
+  
+  // 2. 구글 시트 데이터 요청 모드 (기본값)
+  else {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+    var rows = sheet.getDataRange().getValues();
+    var sheetData = [];
+    for (var i = 1; i < rows.length; i++) {
+      if(!rows[i][2]) continue; // 이름 없으면 패스
+      sheetData.push({
+        user: rows[i][0], address: rows[i][1], name: rows[i][2],
+        type: rows[i][3], capacity: rows[i][4], note: rows[i][5],
+        lat: parseFloat(rows[i][6]), lng: parseFloat(rows[i][7])
       });
     }
-  } catch (err) {
-    // API 장애 시 제보 데이터만이라도 전송
+    return createJsonResponse(sheetData);
   }
+}
 
-  // 3. 통합된 데이터를 JSON으로 반환
-  return ContentService.createTextOutput(JSON.stringify(combinedData))
+function createJsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
 }
