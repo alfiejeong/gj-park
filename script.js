@@ -2,7 +2,7 @@
 var mainMap = null, reportMarker = null, selectedCoord = null;
 var currentInfoWindow = null; 
 var fetchedData = null; 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0Jgj1bWr4p90S_y6f5FGXkg8-rQtg42IQQQOBHrEl2x2XoddU-kOcVf0HQb-9Z-i-/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxADtIXENu_WFeyvjBXrCQ7MYBiKVPo9ILAyN6yax0CBsL1M9rKPuwng8AQIq3gyYs/exec";
 
 // [신규 추가] 서울시 API 인증키
 const SEOUL_API_KEY = "7353726f51616c663130305873426c73";
