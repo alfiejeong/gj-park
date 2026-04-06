@@ -2,8 +2,8 @@ var map = null;
 var currentInfo = null;
 var pickMarker = null;
 var addrStr = "";
-// [중요] 정 대표님의 최신 GAS URL을 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby9XFKcCjpJ0Ne4vsezb_oR4ZT_NRMTQfzYA864-CabUEnzHvTiPcMap-8rgH_6tlhZ/exec";
+// [핵심] 반드시 GAS '새 배포' 후 생성된 URL을 여기에 넣으십시오.
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWc1uZUkRAUu3pn3v_R2AzqfGcGNkYJ19GtZ6J8KXVIVB0l8u68k4b7Wfjltttf-Ll/exec";
 
 function initMap() {
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -39,8 +39,9 @@ function setupEvents() {
 }
 
 function fetchData() {
-    fetch(`${SCRIPT_URL}?type=sheet`).then(r => r.json()).then(d => d.forEach(i => renderMarker(i, "제보"))).catch(e => console.log("데이터 대기..."));
-    fetch(`${SCRIPT_URL}?type=seoul`).then(r => r.json()).then(d => d.forEach(i => renderMarker(i, "서울"))).catch(e => console.log("서울 데이터 대기..."));
+    // 3초 딜레이 없이 병렬 로드
+    fetch(`${SCRIPT_URL}?type=sheet`).then(r => r.json()).then(d => d.forEach(i => renderMarker(i, "제보"))).catch(e => {});
+    fetch(`${SCRIPT_URL}?type=seoul`).then(r => r.json()).then(d => d.forEach(i => renderMarker(i, "서울"))).catch(e => {});
 }
 
 function renderMarker(item, src) {
@@ -51,21 +52,20 @@ function renderMarker(item, src) {
         icon: { content: `<div class="label-saved">${item.type}</div>`, anchor: new naver.maps.Point(30, 15) }
     });
 
-    const info = new naver.maps.InfoWindow({
-        content: `<div style="padding:15px; font-size:13px; line-height:1.5;"><b>${item.name}</b><br><small>${item.address}</small><br><hr style="border:0;border-top:1px solid #eee;"><small style="color:#666;">${item.desc || '상세내용 없음'}</small></div>`,
-        borderWidth: 0, disableAnchor: true
-    });
-
     naver.maps.Event.addListener(marker, 'click', () => {
         if (currentInfo) currentInfo.close();
+        const info = new naver.maps.InfoWindow({
+            content: `<div style="padding:15px; font-size:13px; line-height:1.5;"><b>${item.name}</b><br><small>${item.address}</small><br><hr style="border:0;border-top:1px solid #eee;"><small>${item.desc || '정보 없음'}</small></div>`,
+            borderWidth: 0, disableAnchor: true
+        });
         info.open(map, marker);
         currentInfo = info;
     });
 }
 
 function openModal() {
-    if (!pickMarker) return alert("지도에 제보할 위치를 먼저 클릭해 주세요!");
-    document.getElementById('addr-preview').innerText = "📍 " + (addrStr || "주소 확인 중...");
+    if (!pickMarker) return alert("지도에 위치를 먼저 찍어주세요!");
+    document.getElementById('addr-text').innerText = "📍 " + (addrStr || "주소를 찾는 중...");
     document.getElementById('modal').classList.remove('hidden');
 }
 
@@ -77,17 +77,14 @@ async function submitReport() {
     const type = document.getElementById('ptype').value;
     const desc = document.getElementById('pdesc').value;
 
-    if (!nick || !name) return alert("닉네임과 장소명을 입력하세요.");
+    if (!nick || !name) return alert("닉네임과 장소명을 적어주세요!");
     localStorage.setItem('gj-nick', nick);
 
-    const q = new URLSearchParams({
-        user: nick, name: name, type: type, addr: addrStr, desc: desc,
-        lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng()
-    });
-
+    const q = new URLSearchParams({ user: nick, name: name, type: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
+    
+    // CORS 문제를 피하기 위해 redirect 허용 모드로 호출
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
-    alert("제보가 완료되었습니다!"); 
-    location.reload();
+    alert("제보가 완료되었습니다!"); location.reload();
 }
 
 function moveToMyLoc() {
