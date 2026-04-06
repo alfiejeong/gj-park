@@ -2,7 +2,7 @@
 var mainMap = null, reportMarker = null, selectedCoord = null;
 var currentInfoWindow = null; 
 var fetchedData = null; 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZbCGEoqgC_2MQG7DTvGFgVNL8zcTOX3uJjR1xGTwYBV39yMi8iYlGohnNcNmALV3C/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0Jgj1bWr4p90S_y6f5FGXkg8-rQtg42IQQQOBHrEl2x2XoddU-kOcVf0HQb-9Z-i-/exec";
 
 // [신규 추가] 서울시 API 인증키
 const SEOUL_API_KEY = "7353726f51616c663130305873426c73";
@@ -138,8 +138,10 @@ async function 구글시트데이터취재() {
 
 async function 서울시데이터취재() {
     try {
-        // [핵심 수정] 서울시 API 직접 호출 대신, 우리 GAS 서버에 "서울시 꺼 가져와"라고 요청합니다.
-        // SCRIPT_URL 뒤에 파라미터를 붙여 구분합니다.
+        console.log("서울시 데이터 특파원(GAS) 파견...");
+        
+        // [핵심 수정] 직접 호출 대신 구글 스크립트를 통해 서울시 데이터를 요청합니다.
+        // SCRIPT_URL은 기존에 정의된 변수를 그대로 사용합니다.
         const apiURL = SCRIPT_URL + "?type=seoul"; 
         
         const response = await fetch(apiURL);
@@ -148,6 +150,8 @@ async function 서울시데이터취재() {
         if (data && data.length > 0) {
             data.forEach(item => 마커생성실행(item, "서울시"));
             console.log("✅ 서울시 데이터 우회 수신 성공:", data.length, "건");
+        } else {
+            console.warn("⚠️ 수신된 서울시 무료 주차장 데이터가 없습니다.");
         }
     } catch (e) {
         console.error("❌ 서울시 데이터 우회 호출 실패:", e);
