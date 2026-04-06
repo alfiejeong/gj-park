@@ -242,33 +242,30 @@ function doGet(e) {
   
   if (type === "seoul") {
     var seoulKey = "7353726f51616c663130305873426c73";
-    // [보정] 서비스명을 GetParkInfo에서 GetParkingInfo로 혼용되는 경우가 있어 확인 필요 (명세서 기준 GetParkInfo)
+    // [확인] GetParkInfo가 맞는지 GetParkingInfo가 맞는지 1단계 주소와 대조하십시오.
     var apiURL = "http://openapi.seoul.go.kr:8088/" + seoulKey + "/json/GetParkInfo/1/1000/";
     
     try {
       var response = UrlFetchApp.fetch(apiURL, { "muteHttpExceptions": true });
-      var json = JSON.parse(response.getContentText());
+      var resText = response.getContentText();
+      var json = JSON.parse(resText);
       var seoulData = [];
       
-      if (json.GetParkInfo && json.GetParkInfo.row) {
-        var rows = json.GetParkInfo.row;
-        rows.forEach(function(item) {
-          // [필터 완화] 무료 주차장 판별 (Y/N 뿐만 아니라 명칭까지 싹 훑음)
-          var isFree = (item.CHGD_FREE_NM && item.CHGD_FREE_NM.indexOf("무료") > -1) || 
-                       (item.PAY_YN === "N") || 
-                       (item.SAT_CHGD_FREE_NM && item.SAT_CHGD_FREE_NM.indexOf("무료") > -1);
-          
-          var hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
-
-          if (isFree && hasCoords) {
+      // [교정] GetParkInfo 또는 GetParkingInfo 유연하게 대응
+      var root = json.GetParkInfo || json.GetParkingInfo;
+      
+      if (root && root.row) {
+        root.row.forEach(function(item) {
+          // [테스트] 필터를 아예 제거하고 좌표만 있으면 일단 다 넣습니다.
+          if (item.LAT && item.LOT && parseFloat(item.LAT) > 30) {
             seoulData.push({
-              name: item.PKLT_NM,
-              address: item.ADDR,
+              name: "서울_" + item.PKLT_NM, // 구분을 위해 접두어 추가
+              address: item.ADDR || "주소없음",
               lat: parseFloat(item.LAT),
               lng: parseFloat(item.LOT),
-              type: "무료(공공)",
+              type: item.CHGD_FREE_NM || "정보없음", 
               capacity: item.TPKCT || 0,
-              note: "운영: " + (item.WD_OPER_BGNG_TM || "0000") + "~" + (item.WD_OPER_END_TM || "2400"),
+              note: "요금구분: " + (item.CHGD_FREE_NM || "미정"),
               user: "서울시"
             });
           }
@@ -276,11 +273,13 @@ function doGet(e) {
       }
       return createJsonResponse(seoulData);
     } catch (err) {
-      return createJsonResponse([]);
+      // 에러 발생 시 에러 메시지를 JSON으로 반환하여 웹에서 확인 가능하게 함
+      return createJsonResponse([{name: "GAS_ERROR", note: err.toString()}]);
     }
   } 
   
   else {
+    // 구글 시트 제보 데이터 가져오기 (기존 유지)
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
     var rows = sheet.getDataRange().getValues();
     var sheetData = [];
