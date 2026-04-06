@@ -138,25 +138,21 @@ async function 구글시트데이터취재() {
 
 async function 서울시데이터취재() {
     try {
-        console.log("서울시 특파원 파견 중...");
-        
-        // [수정] 파라미터 전달 방식을 더 명확하게 변경
+        console.log("📡 서울시 특파원(GAS)에게 데이터 요청 중...");
         const targetUrl = `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`;
         
         const response = await fetch(targetUrl);
         const data = await response.json();
 
         if (data && data.length > 0) {
-            // [검증] 수신된 첫 번째 데이터의 이름을 확인하여 '진짜 서울시 데이터'인지 판별
-            console.log("✅ 서울시 수신 데이터 첫 항목:", data[0].name);
-            console.log("✅ 서울시 데이터 우회 수신 성공:", data.length, "건");
-            
-            data.forEach(item => {
-                if(item.lat > 0) 마커생성실행(item, "서울시");
-            });
+            console.log(`✅ 서울시 무료 주차장 ${data.length}건 발굴 성공!`);
+            data.forEach(item => 마커생성실행(item, "서울시"));
+        } else {
+            console.warn("⚠️ 서울시 응답은 성공했으나 '무료' 조건에 맞는 데이터가 0건입니다.");
+            console.log("💡 서울시 API 서버가 점검 중이거나 필터 조건이 엄격할 수 있습니다.");
         }
     } catch (e) {
-        console.error("❌ 서울시 우회 호출 실패:", e);
+        console.error("❌ 서울시 우회 호출 과정에서 통신 오류 발생:", e);
     }
 }
 
@@ -242,12 +238,11 @@ async function 저장제보() {
 }
 
 function doGet(e) {
-  // [보정] 파라미터 존재 여부를 더 확실하게 체크합니다.
   var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "sheet";
   
-  // 1. 서울시 데이터 요청 모드 (type=seoul)
   if (type === "seoul") {
     var seoulKey = "7353726f51616c663130305873426c73";
+    // [보정] 서비스명을 GetParkInfo에서 GetParkingInfo로 혼용되는 경우가 있어 확인 필요 (명세서 기준 GetParkInfo)
     var apiURL = "http://openapi.seoul.go.kr:8088/" + seoulKey + "/json/GetParkInfo/1/1000/";
     
     try {
@@ -256,9 +251,13 @@ function doGet(e) {
       var seoulData = [];
       
       if (json.GetParkInfo && json.GetParkInfo.row) {
-        json.GetParkInfo.row.forEach(function(item) {
-          // 무료 필터링
-          var isFree = (item.CHGD_FREE_NM === "무료" || item.SAT_CHGD_FREE_NM === "무료" || item.LHLDY_NM === "무료");
+        var rows = json.GetParkInfo.row;
+        rows.forEach(function(item) {
+          // [필터 완화] 무료 주차장 판별 (Y/N 뿐만 아니라 명칭까지 싹 훑음)
+          var isFree = (item.CHGD_FREE_NM && item.CHGD_FREE_NM.indexOf("무료") > -1) || 
+                       (item.PAY_YN === "N") || 
+                       (item.SAT_CHGD_FREE_NM && item.SAT_CHGD_FREE_NM.indexOf("무료") > -1);
+          
           var hasCoords = item.LAT && item.LOT && parseFloat(item.LAT) > 30;
 
           if (isFree && hasCoords) {
@@ -267,9 +266,9 @@ function doGet(e) {
               address: item.ADDR,
               lat: parseFloat(item.LAT),
               lng: parseFloat(item.LOT),
-              type: item.CHGD_FREE_NM === "무료" ? "상시 무료" : "주말 무료",
+              type: "무료(공공)",
               capacity: item.TPKCT || 0,
-              note: "평일 운영: " + item.WD_OPER_BGNG_TM + "~" + item.WD_OPER_END_TM,
+              note: "운영: " + (item.WD_OPER_BGNG_TM || "0000") + "~" + (item.WD_OPER_END_TM || "2400"),
               user: "서울시"
             });
           }
@@ -277,17 +276,16 @@ function doGet(e) {
       }
       return createJsonResponse(seoulData);
     } catch (err) {
-      return createJsonResponse([{name: "API에러", lat: 0, lng: 0}]); // 에러 추적용
+      return createJsonResponse([]);
     }
   } 
   
-  // 2. 구글 시트 데이터 요청 모드 (기본값)
   else {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
     var rows = sheet.getDataRange().getValues();
     var sheetData = [];
     for (var i = 1; i < rows.length; i++) {
-      if(!rows[i][2]) continue; // 이름 없으면 패스
+      if(!rows[i][2]) continue;
       sheetData.push({
         user: rows[i][0], address: rows[i][1], name: rows[i][2],
         type: rows[i][3], capacity: rows[i][4], note: rows[i][5],
