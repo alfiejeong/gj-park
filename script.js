@@ -2,7 +2,7 @@ var map = null;
 var currentInfo = null;
 var pickMarker = null;
 var addrStr = "";
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjjKRbsdD7GKqj4J8n5gkO-7kIHosq5-0mOdiPsycnxpMJMYMEPzrAolCIHVJb_qyL/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwAqU_EDgWknYA_dwmC_sHSkAIXT1RDYSulqKG0XgK8BFCwo-D719QHZmzcTdWjgQKv/exec";
 
 // [1] 지도 초기화 함수
 function initMap() {

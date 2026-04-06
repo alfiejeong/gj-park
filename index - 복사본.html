@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>거지주차.com</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=0j4jrp2z8y&submodules=geocoder"></script>
+</head>
+<body style="background: #FFD400;">
+    <div id="header-bar">
+        <h1>거지주차.com</h1>
+        <div class="by-line">by 쌍칼(alfiejeong@gmail.com)</div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="floating-menu">
+        <button onclick="moveToMyLoc()" class="f-btn">📍 내위치</button>
+        <button onclick="openModal()" class="f-btn primary">📢 제보하기</button>
+        <button onclick="alert('준비 중')" class="f-btn">💬 수다방</button>
+        <button onclick="alert('준비 중')" class="f-btn">🏆 랭킹</button>
+    </div>
+
+    <div id="modal" class="hidden">
+        <div class="modal-content">
+            <h3>📍 주차 명당 제보</h3>
+            <p id="addr-text">지도를 클릭해 위치를 잡으세요</p>
+            <input type="text" id="nick" placeholder="제보자 닉네임">
+            <input type="text" id="pname" placeholder="장소명">
+            <select id="ptype">
+                <option value="상시 무료">상시 무료</option>
+                <option value="밤샘 무료(야간)">밤샘 무료(야간)</option>
+                <option value="주말·공휴일 무료">주말·공휴일 무료</option>
+                <option value="조건부 무료">조건부 무료</option>
+                <option value="회차 무료">회차 무료</option>
+            </select>
+            <textarea id="pdesc" placeholder="상세내용"></textarea>
+            <div class="modal-btns">
+                <button onclick="submitReport()" class="btn-save">정보 저장</button>
+                <button onclick="closeModal()" class="btn-cancel">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // HTML 로드 직후 지도 엔진 점화
+        (function() {
+            if (typeof initMap === 'function') {
+                initMap();
+            } else {
+                window.onload = initMap;
+            }
+        })();
+    </script>
+</body>
+</html>
