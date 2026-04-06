@@ -2,21 +2,29 @@ var map = null;
 var currentInfo = null;
 var pickMarker = null;
 var addrStr = "";
-var preloadedData = [];
+var preloadedData = []; // 데이터를 미리 담아둘 저장소
+var isDataLoaded = false; // 데이터 로드 완료 여부 체크
+
+// [핵심] 지도를 그리기 전, 파일이 로드되자마자 0초 시점에 데이터부터 부릅니다.
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby_-yBAmh2rNKo4wSea9dcLMygUdmPbiiuedxZatJAwaaib1g-PNLrOBYw17YORob5Y/exec";
 
-// 데이터 즉시 호출 (병렬 로딩)
-(function preFetch() {
-    [`${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`, `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`].forEach(url => {
-        fetch(url).then(r => r.json()).then(d => {
-            preloadedData.push(...d);
-            if (map) renderAllMarkers();
-        }).catch(e => console.log("데이터 대기..."));
-    });
+(function preFetchData() {
+    console.log("0초: 데이터 수급 즉시 개시");
+    const urls = [`${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`, `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`];
+    
+    Promise.all(urls.map(url => fetch(url).then(r => r.json())))
+    .then(results => {
+        results.forEach(d => preloadedData.push(...d));
+        isDataLoaded = true;
+        console.log("데이터 준비 완료");
+        // 만약 지도가 이미 생성되어 있다면 바로 마커를 뿌립니다.
+        if (map) renderAllMarkers();
+    })
+    .catch(e => console.log("데이터 대기 중..."));
 })();
 
 function initMap() {
-    // 위치 정보를 먼저 가져오고 지도를 띄움 (시청역 경유 방지)
+    // 시청역을 들르지 않기 위해 위치 정보 획득 후 지도를 생성합니다.
     navigator.geolocation.getCurrentPosition((pos) => {
         setupMap(pos.coords.latitude, pos.coords.longitude);
     }, () => {
@@ -38,30 +46,17 @@ function setupMap(lat, lng) {
             screen.style.opacity = '0';
             setTimeout(() => { screen.style.display = 'none'; }, 500);
         }
+        // 지도가 뜬 시점에 데이터가 이미 와 있다면 즉시 렌더링
+        if (isDataLoaded) renderAllMarkers();
     });
 
-    if (preloadedData.length > 0) renderAllMarkers();
-    
     const oldNick = localStorage.getItem('gj-nick');
-    if (oldNick) document.getElementById('nick').value = oldNick;
+    if (oldNick) {
+        const nickEl = document.getElementById('nick');
+        if (nickEl) nickEl.value = oldNick;
+    }
 
     setupEvents();
-}
-
-function setupEvents() {
-    naver.maps.Event.addListener(map, 'click', (e) => {
-        if (currentInfo) currentInfo.close();
-        if (pickMarker) pickMarker.setMap(null);
-        pickMarker = new naver.maps.Marker({
-            position: e.coord, map: map,
-            icon: { content: '<div class="report-marker"></div>', anchor: new naver.maps.Point(12, 24) }
-        });
-        naver.maps.Service.reverseGeocode({ coords: e.coord }, (status, res) => {
-            if (status === naver.maps.Service.Status.OK) {
-                addrStr = res.v2.address.jibunAddress || res.v2.address.roadAddress;
-            }
-        });
-    });
 }
 
 function renderAllMarkers() {
@@ -86,6 +81,22 @@ function renderAllMarkers() {
     });
 }
 
+function setupEvents() {
+    naver.maps.Event.addListener(map, 'click', (e) => {
+        if (currentInfo) currentInfo.close();
+        if (pickMarker) pickMarker.setMap(null);
+        pickMarker = new naver.maps.Marker({
+            position: e.coord, map: map,
+            icon: { content: '<div class="report-marker"></div>', anchor: new naver.maps.Point(12, 24) }
+        });
+        naver.maps.Service.reverseGeocode({ coords: e.coord }, (status, res) => {
+            if (status === naver.maps.Service.Status.OK) {
+                addrStr = res.v2.address.jibunAddress || res.v2.address.roadAddress;
+            }
+        });
+    });
+}
+
 function openModal() {
     if (!pickMarker) return alert("지도에 위치를 먼저 찍어주세요!");
     const addrEl = document.getElementById('addr-text');
@@ -103,6 +114,7 @@ async function submitReport() {
     if (!nick || !name) return alert("닉네임과 장소명을 적어주세요!");
     localStorage.setItem('gj-nick', nick);
     const q = new URLSearchParams({ user: nick, name: name, type: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
+    
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
     alert("제보 완료!"); location.reload();
 }
