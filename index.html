@@ -1,8 +1,17 @@
-@ -11,7 +11,7 @@
+@ -1,17 +1,17 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>거지주차.com</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=0j4jrp2z8y&submodules=geocoder"></script>
+</head>
+<body>
     <div class="header">
         <div style="text-align: center;">
             <h1>거지주차.com</h1>
-            <div style="font-size: 10px; font-weight: bold; color: #444; margin-top: -2px;">BY 구마적</div>
             <div style="font-size: 10px; font-weight: bold; color: #444; margin-top: -2px;">BY 구마적(alfiejeong@gmail.com)</div>
         </div>
     </div>
@@ -11,7 +20,6 @@
         <div class="input-group"><label>도로명 주소 (자동)</label><input type="text" id="place-addr" readonly></div>
         <div class="input-group"><label>장소 명칭</label><input type="text" id="place-name"></div>
         <div style="display:flex; gap:10px;">
-            <div class="input-group" style="flex:2;"><label>주차유형</label><input type="text" id="parking-type"></div>
             <div class="input-group" style="flex:2;">
     <label>주차유형</label>
     <select id="parking-type" style="width: 100%; padding: 10px; border: 1px solid #eee; border-radius: 10px; font-size: 14px;">
