@@ -3,12 +3,11 @@ var currentInfo = null;
 var pickMarker = null;
 var addrStr = "";
 var preloadedData = [];
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby_-yBAmh2rNKo4wSea9dcLMygUdmPbiiuedxZatJAwaaib1g-PNLrOBYw17YORob5Y/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjjKRbsdD7GKqj4J8n5gkO-7kIHosq5-0mOdiPsycnxpMJMYMEPzrAolCIHVJb_qyL/exec";
 
-// [1] 데이터 즉시 호출 (병렬 로딩)
+// 데이터 즉시 호출 (병렬 로딩)
 (function preFetch() {
-    console.log("데이터 수급 시작");
-    [`${SCRIPT_URL}?type=sheet`, `${SCRIPT_URL}?type=seoul`].forEach(url => {
+    [`${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`, `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`].forEach(url => {
         fetch(url).then(r => r.json()).then(d => {
             preloadedData.push(...d);
             if (map) renderAllMarkers();
@@ -16,12 +15,12 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby_-yBAmh2rNKo4wSea9
     });
 })();
 
-// [2] 지도 초기화
 function initMap() {
+    // 위치 정보를 먼저 가져오고 지도를 띄움 (시청역 경유 방지)
     navigator.geolocation.getCurrentPosition((pos) => {
         setupMap(pos.coords.latitude, pos.coords.longitude);
     }, () => {
-        setupMap(37.5665, 126.9780); // 위치 거부 시 시청
+        setupMap(37.5665, 126.9780); // 거부 시 서울시청
     }, { timeout: 3000 });
 }
 
@@ -32,13 +31,24 @@ function setupMap(lat, lng) {
         background: '#FFD400'
     });
 
+    // 지도가 완전히 그려지면 로딩 화면 제거
+    naver.maps.Event.addListener(map, 'tilesloaded', function() {
+        const screen = document.getElementById('loading-screen');
+        if (screen) {
+            screen.style.opacity = '0';
+            setTimeout(() => { screen.style.display = 'none'; }, 500);
+        }
+    });
+
     if (preloadedData.length > 0) renderAllMarkers();
     
-    // 닉네임 기억
     const oldNick = localStorage.getItem('gj-nick');
     if (oldNick) document.getElementById('nick').value = oldNick;
 
-    // 클릭 이벤트
+    setupEvents();
+}
+
+function setupEvents() {
     naver.maps.Event.addListener(map, 'click', (e) => {
         if (currentInfo) currentInfo.close();
         if (pickMarker) pickMarker.setMap(null);
@@ -76,7 +86,6 @@ function renderAllMarkers() {
     });
 }
 
-// 모달 및 제보 함수 (전역 정의)
 function openModal() {
     if (!pickMarker) return alert("지도에 위치를 먼저 찍어주세요!");
     const addrEl = document.getElementById('addr-text');
@@ -95,7 +104,7 @@ async function submitReport() {
     localStorage.setItem('gj-nick', nick);
     const q = new URLSearchParams({ user: nick, name: name, type: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
-    alert("제보가 완료되었습니다!"); location.reload();
+    alert("제보 완료!"); location.reload();
 }
 
 function moveToMyLoc() {

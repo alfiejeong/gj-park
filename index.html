@@ -8,12 +8,22 @@
     <script src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=0j4jrp2z8y&submodules=geocoder"></script>
 </head>
 <body style="background-color: #FFD400; margin: 0; padding: 0;">
+
+    <div id="loading-screen">
+        <div class="loader-content">
+            <h1>거지주차.com</h1>
+            <div class="loader"></div>
+            <p>내 주변 명당 찾는 중...</p>
+            <p style="font-size: 11px; color: #666; margin-top: 5px;">잠시만 기다려주세요!</p>
+        </div>
+    </div>
+
     <div id="header-bar">
         <h1>거지주차.com</h1>
         <div class="by-line">by 쌍칼(alfiejeong@gmail.com)</div>
     </div>
 
-    <div id="map" style="width: 100%; height: 100vh; background-color: #FFD400;"></div>
+    <div id="map"></div>
 
     <div id="floating-menu">
         <button onclick="moveToMyLoc()" class="f-btn">📍 내위치</button>
