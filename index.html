@@ -7,18 +7,21 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=0j4jrp2z8y&submodules=geocoder"></script>
 </head>
-<body>
+<body style="background: #FFD400;">
     <div id="header-bar">
         <h1>거지주차.com</h1>
         <div class="by-line">by 쌍칼(alfiejeong@gmail.com)</div>
     </div>
+
     <div id="map"></div>
+
     <div id="floating-menu">
         <button onclick="moveToMyLoc()" class="f-btn">📍 내위치</button>
         <button onclick="openModal()" class="f-btn primary">📢 제보하기</button>
         <button onclick="alert('준비 중')" class="f-btn">💬 수다방</button>
         <button onclick="alert('준비 중')" class="f-btn">🏆 랭킹</button>
     </div>
+
     <div id="modal" class="hidden">
         <div class="modal-content">
             <h3>📍 주차 명당 제보</h3>
@@ -39,6 +42,17 @@
             </div>
         </div>
     </div>
+
     <script src="script.js"></script>
+    <script>
+        // HTML 로드 직후 지도 엔진 점화
+        (function() {
+            if (typeof initMap === 'function') {
+                initMap();
+            } else {
+                window.onload = initMap;
+            }
+        })();
+    </script>
 </body>
 </html>
