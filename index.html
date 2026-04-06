@@ -10,22 +10,19 @@
 <body>
     <div id="header-bar">
         <h1>거지주차.com</h1>
-        <span class="footer-copy">by 쌍칼(alfiejeong@gmail.com)</span>
+        <div class="by-line">by 쌍칼(alfiejeong@gmail.com)</div>
     </div>
-
     <div id="map"></div>
-
-    <div id="floating-nav">
-        <button onclick="moveToMyLoc()" class="float-btn">📍 내위치</button>
-        <button onclick="openModal()" class="float-btn primary">📢 제보하기</button>
-        <button onclick="alert('준비 중입니다')" class="float-btn">💬 수다방</button>
-        <button onclick="alert('준비 중입니다')" class="float-btn">🏆 랭킹</button>
+    <div id="floating-menu">
+        <button onclick="moveToMyLoc()" class="f-btn">📍 내위치</button>
+        <button onclick="openModal()" class="f-btn primary">📢 제보하기</button>
+        <button onclick="alert('준비 중')" class="f-btn">💬 수다방</button>
+        <button onclick="alert('준비 중')" class="f-btn">🏆 랭킹</button>
     </div>
-
     <div id="modal" class="hidden">
-        <div class="modal-body">
+        <div class="modal-content">
             <h3>📍 주차 명당 제보</h3>
-            <p id="addr-preview">지도를 클릭해 위치를 찍어주세요</p>
+            <p id="addr-text">지도를 클릭해 위치를 잡으세요</p>
             <input type="text" id="nick" placeholder="제보자 닉네임">
             <input type="text" id="pname" placeholder="장소명">
             <select id="ptype">
@@ -35,14 +32,13 @@
                 <option value="조건부 무료">조건부 무료</option>
                 <option value="회차 무료">회차 무료</option>
             </select>
-            <textarea id="pdesc" placeholder="상세내용을 입력하세요"></textarea>
+            <textarea id="pdesc" placeholder="상세내용"></textarea>
             <div class="modal-btns">
                 <button onclick="submitReport()" class="btn-save">정보 저장</button>
                 <button onclick="closeModal()" class="btn-cancel">닫기</button>
             </div>
         </div>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>
