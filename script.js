@@ -2,10 +2,10 @@ var map = null;
 var currentInfo = null;
 var pickMarker = null;
 var addrStr = "";
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFtF9Qvwmj_fNmDvm1-GVMSrhU7xteNSCes0evTFp4j1NLVnm28V3QmQlN2UlhjXEo/exec";
+// [중요] 정 대표님의 최신 GAS URL을 확인하십시오.
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby9XFKcCjpJ0Ne4vsezb_oR4ZT_NRMTQfzYA864-CabUEnzHvTiPcMap-8rgH_6tlhZ/exec";
 
 function initMap() {
-    // [1] 내 위치 탐색 시작
     navigator.geolocation.getCurrentPosition((pos) => {
         const coords = new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
         map = new naver.maps.Map('map', { center: coords, zoom: 15 });
@@ -15,35 +15,32 @@ function initMap() {
         setupEvents();
     });
 
-    // 닉네임 기억
     const oldNick = localStorage.getItem('gj-nick');
     if (oldNick) document.getElementById('nick').value = oldNick;
 }
 
 function setupEvents() {
-    // 지도 클릭 시 초기화 및 마커 이동
     naver.maps.Event.addListener(map, 'click', (e) => {
         if (currentInfo) currentInfo.close();
         if (pickMarker) pickMarker.setMap(null);
 
         pickMarker = new naver.maps.Marker({
             position: e.coord, map: map,
-            icon: { content: '<div class="report-marker"></div>', anchor: new naver.maps.Point(15, 30) }
+            icon: { content: '<div class="report-marker"></div>', anchor: new naver.maps.Point(12, 24) }
         });
 
-        // 네이버 Geocoding 서비스로 주소 획득
         naver.maps.Service.reverseGeocode({ coords: e.coord }, (status, res) => {
             if (status === naver.maps.Service.Status.OK) {
                 addrStr = res.v2.address.jibunAddress || res.v2.address.roadAddress;
             }
         });
     });
-    fetchData(); // 데이터 로드
+    fetchData(); 
 }
 
 function fetchData() {
-    fetch(`${SCRIPT_URL}?type=sheet`).then(r => r.json()).then(d => d.forEach(i => renderMarker(i, "제보")));
-    fetch(`${SCRIPT_URL}?type=seoul`).then(r => r.json()).then(d => d.forEach(i => renderMarker(i, "서울")));
+    fetch(`${SCRIPT_URL}?type=sheet`).then(r => r.json()).then(d => d.forEach(i => renderMarker(i, "제보"))).catch(e => console.log("데이터 대기..."));
+    fetch(`${SCRIPT_URL}?type=seoul`).then(r => r.json()).then(d => d.forEach(i => renderMarker(i, "서울"))).catch(e => console.log("서울 데이터 대기..."));
 }
 
 function renderMarker(item, src) {
@@ -55,7 +52,7 @@ function renderMarker(item, src) {
     });
 
     const info = new naver.maps.InfoWindow({
-        content: `<div style="padding:12px; font-size:13px; line-height:1.4;"><b>${item.name}</b><br>${item.address}<br><hr><small>${item.desc || '상세내용 없음'}</small><br><small style="color:#999">제보자: ${item.user}</small></div>`,
+        content: `<div style="padding:15px; font-size:13px; line-height:1.5;"><b>${item.name}</b><br><small>${item.address}</small><br><hr style="border:0;border-top:1px solid #eee;"><small style="color:#666;">${item.desc || '상세내용 없음'}</small></div>`,
         borderWidth: 0, disableAnchor: true
     });
 
@@ -67,8 +64,8 @@ function renderMarker(item, src) {
 }
 
 function openModal() {
-    if (!pickMarker) return alert("지도에 마커를 먼저 찍어주세요!");
-    document.getElementById('addr-preview').innerText = "📍 " + (addrStr || "주소를 확인 중...");
+    if (!pickMarker) return alert("지도에 제보할 위치를 먼저 클릭해 주세요!");
+    document.getElementById('addr-preview').innerText = "📍 " + (addrStr || "주소 확인 중...");
     document.getElementById('modal').classList.remove('hidden');
 }
 
@@ -88,8 +85,9 @@ async function submitReport() {
         lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng()
     });
 
-    await fetch(`${SCRIPT_URL}?${q.toString()}`);
-    alert("명당 제보가 완료되었습니다!"); location.reload();
+    await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
+    alert("제보가 완료되었습니다!"); 
+    location.reload();
 }
 
 function moveToMyLoc() {

@@ -8,13 +8,18 @@
     <script src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=0j4jrp2z8y&submodules=geocoder"></script>
 </head>
 <body>
+    <div id="header-bar">
+        <h1>거지주차.com</h1>
+        <span class="footer-copy">by 쌍칼(alfiejeong@gmail.com)</span>
+    </div>
+
     <div id="map"></div>
 
-    <div id="nav-bar">
-        <button onclick="moveToMyLoc()" class="nav-btn">📍 내 위치</button>
-        <button onclick="openModal()" class="nav-btn primary">📢 주차 제보</button>
-        <button onclick="alert('수다방 준비 중')" class="nav-btn">💬 수다방</button>
-        <button onclick="alert('랭킹 준비 중')" class="nav-btn">🏆 랭킹</button>
+    <div id="floating-nav">
+        <button onclick="moveToMyLoc()" class="float-btn">📍 내위치</button>
+        <button onclick="openModal()" class="float-btn primary">📢 제보하기</button>
+        <button onclick="alert('준비 중입니다')" class="float-btn">💬 수다방</button>
+        <button onclick="alert('준비 중입니다')" class="float-btn">🏆 랭킹</button>
     </div>
 
     <div id="modal" class="hidden">
@@ -22,15 +27,15 @@
             <h3>📍 주차 명당 제보</h3>
             <p id="addr-preview">지도를 클릭해 위치를 찍어주세요</p>
             <input type="text" id="nick" placeholder="제보자 닉네임">
-            <input type="text" id="pname" placeholder="장소명 (예: OO빌딩 뒤)">
+            <input type="text" id="pname" placeholder="장소명">
             <select id="ptype">
                 <option value="상시 무료">상시 무료</option>
                 <option value="밤샘 무료(야간)">밤샘 무료(야간)</option>
-                <option value="주말 및 공휴일 무료">주말 및 공휴일 무료</option>
+                <option value="주말·공휴일 무료">주말·공휴일 무료</option>
                 <option value="조건부 무료">조건부 무료</option>
                 <option value="회차 무료">회차 무료</option>
             </select>
-            <textarea id="pdesc" placeholder="상세내용 (예: 관리인 없음, 좁음 등)"></textarea>
+            <textarea id="pdesc" placeholder="상세내용을 입력하세요"></textarea>
             <div class="modal-btns">
                 <button onclick="submitReport()" class="btn-save">정보 저장</button>
                 <button onclick="closeModal()" class="btn-cancel">닫기</button>
