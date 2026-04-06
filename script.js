@@ -2,7 +2,7 @@ var mainMap = null;
 var currentInfoWindow = null;
 
 // [필수] 본인의 구글 앱스 스크립트 '새 배포' 후 생성된 URL을 넣으십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby6aS6HdAyYEuTMAU5HLUa7VAFs9rN0OY-8xi3YRS5o0zVztzWNRMVu-lIei95F433I/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxDEMtukJ1fS9A8PTSP1OJ8TDJApnKqZCL66mnb4JUlndrQ8S0R481QeYnEaalh8jd8/exec";
 
 // 지도를 먼저 그립니다.
 function initMap() {
