@@ -3,7 +3,7 @@ var currentInfo = null;
 var pickMarker = null;
 var addrStr = "";
 var preloadedData = [];
-const SCRIPT_URL = "hhttps://script.google.com/macros/s/AKfycby_-yBAmh2rNKo4wSea9dcLMygUdmPbiiuedxZatJAwaaib1g-PNLrOBYw17YORob5Y/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby_-yBAmh2rNKo4wSea9dcLMygUdmPbiiuedxZatJAwaaib1g-PNLrOBYw17YORob5Y/exec";
 
 // 데이터 즉시 호출 (병렬 로딩)
 (function preFetch() {
