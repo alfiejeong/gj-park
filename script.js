@@ -6,7 +6,7 @@ var preloadedData = []; // 데이터를 미리 담아둘 저장소
 var isDataLoaded = false; // 데이터 로드 완료 여부 체크
 
 // [핵심] 지도를 그리기 전, 파일이 로드되자마자 0초 시점에 데이터부터 부릅니다.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby_-yBAmh2rNKo4wSea9dcLMygUdmPbiiuedxZatJAwaaib1g-PNLrOBYw17YORob5Y/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwMcvJ7_gKwNgGYf41HpY04tXz_XaJdVF3vZXlEj9M6Li_q47MzTAx1fNeaid_662iG/exec";
 
 (function preFetchData() {
     console.log("0초: 데이터 수급 즉시 개시");
@@ -145,6 +145,75 @@ function moveToMyLoc() {
     navigator.geolocation.getCurrentPosition((pos) => {
         if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
     });
+}
+
+function renderMarker(item, src) {
+    const marker = new naver.maps.Marker({
+        position: new naver.maps.LatLng(item.lat, item.lng),
+        map: map,
+        icon: { content: `<div class="label-saved">${item.type}</div>`, anchor: new naver.maps.Point(30, 15) }
+    });
+
+    const contentHtml = `
+        <div class="custom-info-window">
+            <div class="rating-avg">⭐ ${item.avgRating} <span style="font-size:12px; color:#999;">(${item.commentCount}개 후기)</span></div>
+            <div class="info-title">${item.name}</div>
+            <div class="info-grid">
+                <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
+                <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
+                <div class="info-full"><span class="info-label">상세위치</span><span class="info-value">${item.address}</span></div>
+            </div>
+            
+            <div class="comment-section">
+                <div class="info-label">이용자 한줄평</div>
+                <div class="comment-input-group">
+                    <select id="rate-${item.name}">
+                        <option value="5">⭐⭐⭐⭐⭐ 5점</option>
+                        <option value="4">⭐⭐⭐⭐ 4점</option>
+                        <option value="3">⭐⭐⭐ 3점</option>
+                        <option value="2">⭐⭐ 2점</option>
+                        <option value="1">⭐ 1점</option>
+                    </select>
+                    <input type="text" id="cmt-${item.name}" placeholder="리얼 후기를 남겨주세요">
+                    <button class="btn-comment" onclick="addComment('${item.name}')">후기 등록</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const info = new naver.maps.InfoWindow({
+        content: contentHtml,
+        borderWidth: 0,
+        backgroundColor: "transparent",
+        disableAnchor: true
+    });
+
+    naver.maps.Event.addListener(marker, 'click', () => {
+        if (currentInfo) currentInfo.close();
+        info.open(map, marker);
+        currentInfo = info;
+    });
+}
+
+// 댓글 저장 함수
+async function addComment(targetId) {
+    const user = localStorage.getItem('gj-nick') || "익명";
+    const comment = document.getElementById(`cmt-${targetId}`).value;
+    const rating = document.getElementById(`rate-${targetId}`).value;
+
+    if (!comment) return alert("내용을 입력해주세요!");
+
+    const q = new URLSearchParams({
+        type: "add_comment",
+        target_id: targetId,
+        user: user,
+        comment: comment,
+        rating: rating
+    });
+
+    await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
+    alert("소중한 별점이 반영되었습니다!");
+    location.reload(); // 평균점수 갱신을 위해 새로고침
 }
 
 window.onload = initMap;

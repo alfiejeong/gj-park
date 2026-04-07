@@ -54,3 +54,21 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 .modal-content input, .modal-content select, .modal-content textarea { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
 .btn-save { width: 100%; padding: 12px; background: #FFD400; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
 .btn-cancel { width: 100%; padding: 8px; background: #eee; border: none; border-radius: 8px; margin-top: 5px; cursor: pointer; }
+
+/* 별점 및 댓글 스타일 추가 */
+.rating-avg { color: #f39c12; font-size: 18px; font-weight: 900; margin-bottom: 5px; }
+.star { color: #f39c12; }
+
+.comment-section {
+    margin-top: 15px;
+    border-top: 2px dashed #FFD400;
+    padding-top: 10px;
+}
+.comment-input-group { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+.comment-input-group input, .comment-input-group select { 
+    padding: 8px; border: 1px solid #ddd; border-radius: 10px; font-size: 12px;
+}
+.btn-comment { 
+    background: #FFD400; border: none; padding: 8px; border-radius: 10px; 
+    font-weight: bold; cursor: pointer; margin-top: 5px;
+}
