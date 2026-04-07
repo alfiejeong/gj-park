@@ -5,7 +5,7 @@ var addrStr = "";
 var preloadedData = []; 
 var isDataLoaded = false; 
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqkls7mdAwGCGHLWOz8_swR1BYE_E1_9maeEpp1P7kFJPKlUFNAW6PP0fcIJhlv6Wn/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbweXXsmga1BNFOp6UYLXiKq1mlB4ZHJdecYEFHLxvX46sqPnpTSQlvzZKQu69FNAFRi/exec";
 
 // [1] 데이터 수급
 function preFetchData() {
@@ -197,48 +197,47 @@ function closeModal() { document.getElementById('modal').classList.add('hidden')
 function attachInfoWindow(marker, item) {
     const idSafe = (item.name || "noname").replace(/\s/g, '');
     
-    // [추가] 해당 장소의 댓글들만 HTML로 생성
-    // preloadedData에 댓글 정보가 포함되어 내려온다는 가정하에 필터링합니다.
+    // [중요] 서버에서 넘어온 댓글 배열(item.comments)을 확인하여 리스트 생성
     let commentsHtml = "";
     if (item.comments && item.comments.length > 0) {
         commentsHtml = item.comments.map(c => `
             <div class="comment-item">
                 <div class="cmt-header">
-                    <span class="cmt-user">${c.user}</span>
-                    <span class="cmt-star">⭐${c.rating}</span>
+                    <span class="cmt-user"><b>${c.user}</b></span>
+                    <span class="cmt-star" style="color:#f39c12; font-size:11px; margin-left:5px;">⭐${c.rating}</span>
                 </div>
-                <div class="cmt-text">${c.comment}</div>
+                <div class="cmt-text" style="font-size:12px; color:#333; margin-top:3px;">${c.comment}</div>
             </div>
         `).join('');
     } else {
-        commentsHtml = "<div style='font-size:11px; color:#999; text-align:center; padding:10px;'>첫 번째 후기를 남겨보세요!</div>";
+        commentsHtml = "<div style='font-size:11px; color:#999; text-align:center; padding:15px;'>등록된 후기가 없습니다. 첫 후기를 남겨보세요!</div>";
     }
 
     const contentHtml = `
         <div class="custom-info-window">
-            <div class="title-wrap">
-                <span class="info-title" style="border:none; margin:0;">${item.name}</span>
-                <span class="avg-star">⭐ ${item.avgRating || '0.0'}</span>
+            <div class="title-wrap" style="display:flex; align-items:center; justify-content:center; gap:10px; border-bottom:2px solid #FFD400; padding-bottom:8px; margin-bottom:10px;">
+                <span style="font-size:18px; font-weight:900;">${item.name}</span>
+                <span style="color:#f39c12; font-weight:bold; font-size:16px;">⭐ ${item.avgRating || '0.0'}</span>
             </div>
             
-            <div class="info-grid">
-                <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
-                <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
-                <div class="info-full"><span class="info-label">상세위치</span><span class="info-value">${item.address}</span></div>
+            <div class="info-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-bottom:10px;">
+                <div class="info-item"><span class="info-label" style="font-size:10px; color:#999;">유형</span><span class="info-value" style="font-size:12px; font-weight:bold;">${item.type}</span></div>
+                <div class="info-item"><span class="info-label" style="font-size:10px; color:#999;">제보자</span><span class="info-value" style="font-size:12px; font-weight:bold;">${item.user}</span></div>
+                <div class="info-full" style="grid-column:span 2; border-top:1px solid #eee; padding-top:5px;"><span class="info-label" style="font-size:10px; color:#999;">위치</span><span class="info-value" style="font-size:11px;">${item.address}</span></div>
             </div>
 
-            <div class="comment-list">
+            <div class="comment-list" style="max-height:100px; overflow-y:auto; border-top:1px solid #FFD400; border-bottom:1px solid #eee; padding:5px 0; margin-bottom:10px;">
                 ${commentsHtml}
             </div>
 
             <div class="feedback-section">
-                <div class="star-rating" id="star-wrap-${idSafe}">
-                    ${[1,2,3,4,5].map(n => `<span class="star-btn" onclick="setRatingUI('${idSafe}', ${n})">★</span>`).join('')}
+                <div class="star-rating" id="star-wrap-${idSafe}" style="display:flex; justify-content:center; gap:5px; margin-bottom:8px;">
+                    ${[1,2,3,4,5].map(n => `<span class="star-btn" style="cursor:pointer; font-size:20px; color:#ddd;" onclick="setRatingUI('${idSafe}', ${n})">★</span>`).join('')}
                     <input type="hidden" id="rate-val-${idSafe}" value="5">
                 </div>
-                <div class="comment-input-box">
-                    <input type="text" id="cmt-msg-${idSafe}" class="comment-txt" placeholder="칭찬이나 주의사항 입력">
-                    <button class="comment-submit" onclick="sendFeedback('${item.name}')">등록</button>
+                <div class="comment-input-box" style="display:flex; gap:5px;">
+                    <input type="text" id="cmt-msg-${idSafe}" class="comment-txt" style="flex:1; border:1px solid #eee; border-radius:10px; padding:8px; font-size:12px;" placeholder="매너 있는 댓글 부탁드려요">
+                    <button class="comment-submit" style="background:#FFD400; border:none; border-radius:10px; padding:0 10px; font-weight:bold; font-size:12px;" onclick="sendFeedback('${item.name}')">등록</button>
                 </div>
             </div>
         </div>`;
