@@ -6,7 +6,7 @@ var preloadedData = []; // 데이터를 미리 담아둘 저장소
 var isDataLoaded = false; // 데이터 로드 완료 여부 체크
 
 // [핵심] 지도를 그리기 전, 파일이 로드되자마자 0초 시점에 데이터부터 부릅니다.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyMc6CMngEzO086-iU9K-z1e8pZzweqTFGTjXkyfe57OUf4ejCh6BQEzqMiSe19u7PV/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzyUJg4ddFQNIr7I11wUsJy0v6NFNQD3wRyXYN2AfIMW5wpV9CebOURd3jHbCkgPCn_/exec";
 
 (function preFetchData() {
     console.log("0초: 데이터 수급 즉시 개시");
@@ -133,12 +133,30 @@ async function submitReport() {
     const name = document.getElementById('pname').value;
     const type = document.getElementById('ptype').value;
     const desc = document.getElementById('pdesc').value;
+
     if (!nick || !name) return alert("닉네임과 장소명을 적어주세요!");
-    localStorage.setItem('gj-nick', nick);
-    const q = new URLSearchParams({ user: nick, name: name, type: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
     
+    localStorage.setItem('gj-nick', nick);
+
+    // [수정] 변수명을 GS 파일의 수신 규격과 완벽히 일치시킵니다.
+    const params = {
+        type: "report", // 제보임을 명시
+        user: nick,
+        name: name,
+        ptype: type,    // p.ptype으로 수신
+        addr: addrStr || "주소 정보 없음", 
+        desc: desc || "상세 내용 없음",
+        lat: pickMarker.getPosition().lat(),
+        lng: pickMarker.getPosition().lng()
+    };
+    
+    const q = new URLSearchParams(params);
+    
+    // [개선] 302 리디렉션 대응을 위해 주소를 직접 호출하는 방식으로 변경 고려
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
-    alert("제보 완료!"); location.reload();
+    
+    alert("제보 완료! 시트를 확인해 보세요."); 
+    location.reload();
 }
 
 function moveToMyLoc() {
