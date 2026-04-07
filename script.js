@@ -66,6 +66,7 @@ function setupMap(lat, lng) {
 // [3] 마커 및 상세창 (중복 제거 통합)
 function renderAllMarkers() {
     if (!map) return;
+
     preloadedData.forEach(item => {
         const lat = Number(item.lat);
         const lng = Number(item.lng);
@@ -80,46 +81,8 @@ function renderAllMarkers() {
                 }
             });
             
-            // 상세창 연결
-            const idSafe = (item.name || "noname").replace(/\s/g, '');
-            const contentHtml = `
-                <div class="custom-info-window">
-                    <div class="info-title">${item.name}</div>
-                    <div style="text-align:center; margin-bottom:10px;">
-                        <span style="font-size:14px; font-weight:bold;">평균 ⭐ ${item.avgRating || '0.0'}</span>
-                        <span style="font-size:11px; color:#999;">(${item.commentCount || 0})</span>
-                    </div>
-                    <div class="info-grid">
-                        <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
-                        <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
-                        <div class="info-full"><span class="info-label">주소</span><span class="info-value">${item.address}</span></div>
-                    </div>
-                    <div class="feedback-section">
-                        <div class="star-rating" id="star-wrap-${idSafe}">
-                            ${[1,2,3,4,5].map(n => `<span class="star-btn" onclick="setRatingUI('${idSafe}', ${n})">★</span>`).join('')}
-                            <input type="hidden" id="rate-val-${idSafe}" value="5">
-                        </div>
-                        <div class="comment-input-box">
-                            <input type="text" id="cmt-msg-${idSafe}" class="comment-txt" placeholder="후기 입력">
-                            <button class="comment-submit" onclick="sendFeedback('${item.name}')">등록</button>
-                        </div>
-                    </div>
-                </div>`;
-
-            const info = new naver.maps.InfoWindow({
-                content: contentHtml,
-                borderWidth: 0,
-                backgroundColor: "transparent",
-                disableAnchor: true,
-                pixelOffset: new naver.maps.Point(0, -10)
-            });
-
-            naver.maps.Event.addListener(marker, 'click', () => {
-                if (currentInfo) currentInfo.close();
-                info.open(map, marker);
-                currentInfo = info;
-                setTimeout(() => setRatingUI(idSafe, 5), 100);
-            });
+            // [연결] 별도로 분리된 상세 정보창 함수를 여기서 호출합니다.
+            attachInfoWindow(marker, item);
             
             item.isRendered = true;
         }
@@ -194,67 +157,86 @@ function openModal() {
 
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 
+/**
+ * 상세 정보창 생성 및 이벤트 결합 함수
+ * @param {naver.maps.Marker} marker - 네이버 지도 마커 객체
+ * @param {Object} item - 서버(GAS)에서 수신한 장소 데이터 객체
+ */
 function attachInfoWindow(marker, item) {
+    // 공백이 포함된 장소명을 HTML ID로 사용하기 위해 공백 제거 처리
     const idSafe = (item.name || "noname").replace(/\s/g, '');
     
-    // [중요] 서버에서 넘어온 댓글 배열(item.comments)을 확인하여 리스트 생성
+    // 1. 서버에서 넘어온 댓글 배열(item.comments)을 기반으로 후기 리스트 HTML 생성
     let commentsHtml = "";
     if (item.comments && item.comments.length > 0) {
         commentsHtml = item.comments.map(c => `
-            <div class="comment-item">
-                <div class="cmt-header">
-                    <span class="cmt-user"><b>${c.user}</b></span>
-                    <span class="cmt-star" style="color:#f39c12; font-size:11px; margin-left:5px;">⭐${c.rating}</span>
+            <div class="comment-item" style="padding:8px 0; border-bottom:1px solid #f9f9f9;">
+                <div style="font-size:11px; font-weight:bold; color:#555;">
+                    ${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span>
                 </div>
-                <div class="cmt-text" style="font-size:12px; color:#333; margin-top:3px;">${c.comment}</div>
+                <div style="font-size:12px; color:#333; margin-top:2px; line-height:1.4;">${c.comment}</div>
             </div>
         `).join('');
     } else {
         commentsHtml = "<div style='font-size:11px; color:#999; text-align:center; padding:15px;'>등록된 후기가 없습니다. 첫 후기를 남겨보세요!</div>";
     }
 
+    // 2. 인포윈도우에 표시될 전체 레이아웃 구성 (디자인 가이드 반영)
     const contentHtml = `
         <div class="custom-info-window">
-            <div class="title-wrap" style="display:flex; align-items:center; justify-content:center; gap:10px; border-bottom:2px solid #FFD400; padding-bottom:8px; margin-bottom:10px;">
-                <span style="font-size:18px; font-weight:900;">${item.name}</span>
+            <div class="title-wrap" style="display:flex; align-items:center; justify-content:center; gap:8px; border-bottom:2px solid #FFD400; padding-bottom:8px; margin-bottom:10px;">
+                <span style="font-size:18px; font-weight:900; color:#000;">${item.name}</span>
                 <span style="color:#f39c12; font-weight:bold; font-size:16px;">⭐ ${item.avgRating || '0.0'}</span>
             </div>
             
-            <div class="info-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-bottom:10px;">
-                <div class="info-item"><span class="info-label" style="font-size:10px; color:#999;">유형</span><span class="info-value" style="font-size:12px; font-weight:bold;">${item.type}</span></div>
-                <div class="info-item"><span class="info-label" style="font-size:10px; color:#999;">제보자</span><span class="info-value" style="font-size:12px; font-weight:bold;">${item.user}</span></div>
-                <div class="info-full" style="grid-column:span 2; border-top:1px solid #eee; padding-top:5px;"><span class="info-label" style="font-size:10px; color:#999;">위치</span><span class="info-value" style="font-size:11px;">${item.address}</span></div>
+            <div class="info-grid">
+                <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
+                <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
+                <div class="info-full" style="border-top:1px solid #eee; padding-top:5px; margin-top:5px;">
+                    <span class="info-label">위치</span><span class="info-value" style="word-break:keep-all;">${item.address}</span>
+                </div>
             </div>
 
-            <div class="comment-list" style="max-height:100px; overflow-y:auto; border-top:1px solid #FFD400; border-bottom:1px solid #eee; padding:5px 0; margin-bottom:10px;">
+            <div class="comment-list" style="max-height:100px; overflow-y:auto; border-top:1px solid #FFD400; margin-bottom:10px; margin-top:10px;">
                 ${commentsHtml}
             </div>
 
             <div class="feedback-section">
                 <div class="star-rating" id="star-wrap-${idSafe}" style="display:flex; justify-content:center; gap:5px; margin-bottom:8px;">
-                    ${[1,2,3,4,5].map(n => `<span class="star-btn" style="cursor:pointer; font-size:20px; color:#ddd;" onclick="setRatingUI('${idSafe}', ${n})">★</span>`).join('')}
+                    ${[1, 2, 3, 4, 5].map(n => `<span class="star-btn" style="cursor:pointer; font-size:20px; color:#ddd;" onclick="setRatingUI('${idSafe}', ${n})">★</span>`).join('')}
                     <input type="hidden" id="rate-val-${idSafe}" value="5">
                 </div>
                 <div class="comment-input-box" style="display:flex; gap:5px;">
-                    <input type="text" id="cmt-msg-${idSafe}" class="comment-txt" style="flex:1; border:1px solid #eee; border-radius:10px; padding:8px; font-size:12px;" placeholder="매너 있는 댓글 부탁드려요">
-                    <button class="comment-submit" style="background:#FFD400; border:none; border-radius:10px; padding:0 10px; font-weight:bold; font-size:12px;" onclick="sendFeedback('${item.name}')">등록</button>
+                    <input type="text" id="cmt-msg-${idSafe}" class="comment-txt" style="flex:1; border:1px solid #eee; border-radius:10px; padding:8px; font-size:12px; outline:none;" placeholder="매너 있는 댓글 부탁드려요">
+                    <button class="comment-submit" style="background:#FFD400; border:none; border-radius:10px; padding:0 10px; font-weight:bold; font-size:12px; cursor:pointer;" onclick="sendFeedback('${item.name}')">등록</button>
                 </div>
             </div>
         </div>`;
 
+    // 3. 네이버 지도 인포윈도우 객체 생성 및 속성 정의
     const info = new naver.maps.InfoWindow({
         content: contentHtml,
         borderWidth: 0,
-        backgroundColor: "transparent",
+        backgroundColor: "transparent", // 커스텀 CSS 적용을 위해 배경 투명화
         disableAnchor: true,
         pixelOffset: new naver.maps.Point(0, -10)
     });
 
+    // 4. 마커 클릭 이벤트 리스너 등록
     naver.maps.Event.addListener(marker, 'click', () => {
+        // 기존에 열려있는 정보창이 있다면 닫기
         if (currentInfo) currentInfo.close();
+        
+        // 정보창 열기 및 현재 활성 정보창으로 등록
         info.open(map, marker);
         currentInfo = info;
-        setTimeout(() => setRatingUI(idSafe, 5), 100);
+        
+        // 정보창이 렌더링된 후 별점 UI 초기값(5점) 강제 활성화
+        setTimeout(() => {
+            if (typeof setRatingUI === 'function') {
+                setRatingUI(idSafe, 5);
+            }
+        }, 100);
     });
 }
 
