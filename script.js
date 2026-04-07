@@ -63,7 +63,7 @@ function setupMap(lat, lng) {
     setupEvents();
 }
 
-// [3] 마커 렌더링 (통합본)
+// [3] 마커 렌더링
 function renderAllMarkers() {
     if (!map) return;
 
@@ -81,14 +81,13 @@ function renderAllMarkers() {
                 }
             });
             
-            // 상세창 연결
             attachInfoWindow(marker, item);
             item.isRendered = true;
         }
     });
 }
 
-// [4] 상세 정보창 디자인 및 이벤트 (통합본)
+// [4] 상세 정보창 디자인 및 이벤트 (괄호 오류 수정 지점)
 function attachInfoWindow(marker, item) {
     const idSafe = item.name.replace(/\s/g, ''); 
     const contentHtml = `
@@ -133,7 +132,7 @@ function attachInfoWindow(marker, item) {
     });
 }
 
-// [5] 부가 기능 (별점 UI, 제보, 이동 등)
+// [5] 별점 UI 제어
 function setRatingUI(id, score) {
     const stars = document.querySelectorAll(`#star-wrap-${id} .star-btn`);
     const input = document.getElementById(`rate-val-${id}`);
@@ -141,6 +140,7 @@ function setRatingUI(id, score) {
     stars.forEach((s, i) => s.classList.toggle('active', i < score));
 }
 
+// [6] 피드백 서버 전송
 async function sendFeedback(targetName) {
     const idSafe = targetName.replace(/\s/g, '');
     const user = localStorage.getItem('gj-nick') || "익명";
@@ -154,6 +154,7 @@ async function sendFeedback(targetName) {
     location.reload();
 }
 
+// [7] 클릭 이벤트 및 주소 추출
 function setupEvents() {
     naver.maps.Event.addListener(map, 'click', (e) => {
         if (currentInfo) currentInfo.close();
@@ -174,6 +175,7 @@ function setupEvents() {
     });
 }
 
+// [8] 제보 제출
 async function submitReport() {
     const nick = document.getElementById('nick').value;
     const name = document.getElementById('pname').value;
@@ -187,6 +189,7 @@ async function submitReport() {
     location.reload();
 }
 
+// [9] 기타 보조 기능
 function moveToMyLoc() {
     navigator.geolocation.getCurrentPosition((pos) => {
         if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
@@ -201,6 +204,7 @@ function openModal() {
 
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 
+// [10] 실행 시작
 window.onload = () => {
     preFetchData();
     initMap();
