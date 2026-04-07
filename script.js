@@ -17,23 +17,21 @@ function preFetchData() {
     ];
     
     Promise.all(urls.map(url => 
-        fetch(url).then(r => r.json()).catch(e => {
-            console.error("개별 URL 로드 실패:", url);
-            return []; // 실패 시 빈 배열 반환하여 중단 방지
-        })
+        fetch(url).then(r => r.json()).catch(e => [])
     ))
     .then(results => {
-        preloadedData = []; // 초기화 후 삽입
+        // 기존 데이터를 유지하며 새로운 데이터를 추가
         results.forEach(d => {
-            if (Array.isArray(d)) preloadedData.push(...d);
+            if (Array.isArray(d)) {
+                preloadedData.push(...d);
+            }
         });
         isDataLoaded = true;
         console.log("데이터 준비 완료, 총 개수:", preloadedData.length);
         
-        // 지도가 이미 준비되었다면 즉시 그리기
+        // 지도가 이미 준비되어 있다면 바로 마커 렌더링
         if (map) renderAllMarkers();
-    })
-    .catch(e => console.error("전체 데이터 수급 오류:", e));
+    });
 }
 
 function initMap() {
