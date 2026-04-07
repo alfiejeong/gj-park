@@ -322,4 +322,7 @@ function setupMarkerEvent(marker, item) {
     });
 }
 
-window.onload = initMap;
+window.onload = () => {
+    preFetchData(); // 데이터를 가져오기 시작하라! (추가된 부분)
+    initMap();      // 지도를 그려라!
+};
