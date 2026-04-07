@@ -6,7 +6,7 @@ var preloadedData = []; // 데이터를 미리 담아둘 저장소
 var isDataLoaded = false; // 데이터 로드 완료 여부 체크
 
 // [핵심] 지도를 그리기 전, 파일이 로드되자마자 0초 시점에 데이터부터 부릅니다.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuDiWccWm6BohNnncARtv86Nc7cMIMBCb_xuAga1WM7F-UWbGbh9wkufik0ma-QMpy/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyMc6CMngEzO086-iU9K-z1e8pZzweqTFGTjXkyfe57OUf4ejCh6BQEzqMiSe19u7PV/exec";
 
 (function preFetchData() {
     console.log("0초: 데이터 수급 즉시 개시");
