@@ -8,20 +8,33 @@ var isDataLoaded = false; // 데이터 로드 완료 여부 체크
 // [핵심] 지도를 그리기 전, 파일이 로드되자마자 0초 시점에 데이터부터 부릅니다.
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzI1RvCkgRPHIPp8l71sq4dRkh_Ba5IM6fKpsPHP1a15f6JgrFjQpJi5EKQu6g3Hay1/exec";
 
-(function preFetchData() {
+// [수정] 데이터 수급 함수: 더 안전하게 데이터를 받아옵니다.
+function preFetchData() {
     console.log("0초: 데이터 수급 즉시 개시");
-    const urls = [`${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`, `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`];
+    const urls = [
+        `${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`, 
+        `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`
+    ];
     
-    Promise.all(urls.map(url => fetch(url).then(r => r.json())))
+    Promise.all(urls.map(url => 
+        fetch(url).then(r => r.json()).catch(e => {
+            console.error("개별 URL 로드 실패:", url);
+            return []; // 실패 시 빈 배열 반환하여 중단 방지
+        })
+    ))
     .then(results => {
-        results.forEach(d => preloadedData.push(...d));
+        preloadedData = []; // 초기화 후 삽입
+        results.forEach(d => {
+            if (Array.isArray(d)) preloadedData.push(...d);
+        });
         isDataLoaded = true;
-        console.log("데이터 준비 완료");
-        // 만약 지도가 이미 생성되어 있다면 바로 마커를 뿌립니다.
+        console.log("데이터 준비 완료, 총 개수:", preloadedData.length);
+        
+        // 지도가 이미 준비되었다면 즉시 그리기
         if (map) renderAllMarkers();
     })
-    .catch(e => console.log("데이터 대기 중..."));
-})();
+    .catch(e => console.error("전체 데이터 수급 오류:", e));
+}
 
 function initMap() {
     // 시청역을 들르지 않기 위해 위치 정보 획득 후 지도를 생성합니다.
@@ -59,23 +72,34 @@ function setupMap(lat, lng) {
     setupEvents();
 }
 
+// [수정] 마커 렌더링 함수: 데이터 타입과 변수명을 정밀 타격합니다.
 function renderAllMarkers() {
+    if (!map) return console.log("지도 엔진 미점화로 렌더링 대기");
+
     preloadedData.forEach(item => {
-        // [체크] item.lat과 item.lng이 존재하는지, 숫자가 맞는지 검사
-        if (item.lat && item.lng && !item.isRendered) {
+        // [중요] 데이터가 문자열일 경우를 대비해 숫자로 강제 변환
+        const lat = Number(item.lat);
+        const lng = Number(item.lng);
+
+        // 좌표가 유효한지 꼼꼼하게 검사
+        if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && !item.isRendered) {
             const marker = new naver.maps.Marker({
-                position: new naver.maps.LatLng(item.lat, item.lng),
+                position: new naver.maps.LatLng(lat, lng),
                 map: map,
                 icon: { 
-                    content: `<div class="label-saved">${item.type}</div>`, 
+                    content: `<div class="label-saved">${item.type || '무료'}</div>`, 
                     anchor: new naver.maps.Point(30, 15) 
                 }
             });
             
-            // ... 클릭 이벤트 로직 (생략)
+            // 상세 정보창 연결 (기존 커스텀 디자인 유지)
+            setupMarkerEvent(marker, item);
+            
             item.isRendered = true;
         } else {
-            console.log("좌표 오류 데이터 발견:", item.name); // 콘솔에 뜨는지 확인
+            if (!item.isRendered) {
+                console.log("좌표 부적합 데이터 스킵:", item.name, "| 위도:", item.lat, "경도:", item.lng);
+            }
         }
     });
 }
@@ -266,6 +290,36 @@ async function submitComment(targetName) {
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
     alert("소중한 후기가 저장되었습니다!");
     location.reload(); // 평균 별점 갱신을 위해 새로고침
+}
+
+// 이벤트 리스너 분리 (코드 가독성)
+function setupMarkerEvent(marker, item) {
+    naver.maps.Event.addListener(marker, 'click', () => {
+        if (currentInfo) currentInfo.close();
+        
+        // 정 대표님이 확정한 상세 정보창 UI
+        const contentHtml = `
+            <div class="custom-info-window">
+                <div class="info-title">${item.name}</div>
+                <div class="rating-display">⭐ ${item.avgRating || '0.0'}</div>
+                <div class="info-grid">
+                    <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
+                    <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
+                    <div class="info-full"><span class="info-label">상세위치</span><span class="info-value">${item.address}</span></div>
+                </div>
+                </div>
+        `;
+
+        const info = new naver.maps.InfoWindow({
+            content: contentHtml,
+            borderWidth: 0,
+            backgroundColor: "transparent",
+            disableAnchor: true
+        });
+        
+        info.open(map, marker);
+        currentInfo = info;
+    });
 }
 
 window.onload = initMap;
