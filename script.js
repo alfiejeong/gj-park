@@ -1,3 +1,8 @@
+/**
+ * 거지주차.com 최종 스크립트
+ * [수정 사항] 네이버 서비스 로드 대기 및 구문 실행 안정화
+ */
+
 var map = null;
 var currentInfo = null;
 var pickMarker = null;
@@ -7,7 +12,7 @@ var isDataLoaded = false;
 
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwAlKJkHgmPXpKid3mqczFBCHjmD7B1sdd9YnQp-oUBGbLJYdc0CnGi9ZmBaOTIPsm3/exec";
 
-// [1] 데이터 수급
+// [1] 데이터 수급 (최우선 실행)
 function preFetchData() {
     console.log("0초: 데이터 수급 즉시 개시");
     const urls = [
@@ -26,11 +31,19 @@ function preFetchData() {
         isDataLoaded = true;
         console.log("데이터 준비 완료, 총 개수:", preloadedData.length);
         if (map) renderAllMarkers();
-    });
+    })
+    .catch(e => console.log("데이터 통신 중 지연 발생"));
 }
 
-// [2] 지도 초기화
+// [2] 지도 엔진 점화
 function initMap() {
+    // 네이버 맵 객체가 존재하는지 최종 확인 후 실행
+    if (typeof naver === 'undefined') {
+        console.log("네이버 지도 API 로드 대기 중...");
+        setTimeout(initMap, 100);
+        return;
+    }
+
     navigator.geolocation.getCurrentPosition((pos) => {
         setupMap(pos.coords.latitude, pos.coords.longitude);
     }, () => {
@@ -39,12 +52,15 @@ function initMap() {
 }
 
 function setupMap(lat, lng) {
-    map = new naver.maps.Map('map', {
+    const mapOptions = {
         center: new naver.maps.LatLng(lat, lng),
         zoom: 15,
         background: '#FFD400'
-    });
+    };
 
+    map = new naver.maps.Map('map', mapOptions);
+
+    // 지도가 완전히 그려지면 로딩 화면 제거 및 마커 투하
     naver.maps.Event.addListener(map, 'tilesloaded', function() {
         const screen = document.getElementById('loading-screen');
         if (screen) {
@@ -87,7 +103,7 @@ function renderAllMarkers() {
     });
 }
 
-// [4] 상세 정보창 디자인 및 이벤트 (괄호 오류 수정 지점)
+// [4] 상세 정보창 디자인 및 이벤트
 function attachInfoWindow(marker, item) {
     const idSafe = item.name.replace(/\s/g, ''); 
     const contentHtml = `
@@ -163,15 +179,19 @@ function setupEvents() {
             position: e.coord, map: map,
             icon: { content: '<div class="report-marker"></div>', anchor: new naver.maps.Point(12, 24) }
         });
-        naver.maps.Service.reverseGeocode({
-            coords: e.coord,
-            orders: [naver.maps.Service.OrderType.ADDR, naver.maps.Service.OrderType.ROAD_ADDR].join(',')
-        }, (status, res) => {
-            if (status === naver.maps.Service.Status.OK) {
-                const addr = res.v2.address;
-                addrStr = addr.roadAddress || addr.jibunAddress;
-            }
-        });
+
+        // 네이버 서비스 모달 로드 확인 후 실행
+        if (naver.maps.Service) {
+            naver.maps.Service.reverseGeocode({
+                coords: e.coord,
+                orders: [naver.maps.Service.OrderType.ADDR, naver.maps.Service.OrderType.ROAD_ADDR].join(',')
+            }, (status, res) => {
+                if (status === naver.maps.Service.Status.OK) {
+                    const addr = res.v2.address;
+                    addrStr = addr.roadAddress || addr.jibunAddress;
+                }
+            });
+        }
     });
 }
 
@@ -183,7 +203,18 @@ async function submitReport() {
     const desc = document.getElementById('pdesc').value;
     if (!nick || !name) return alert("닉네임과 장소명을 적어주세요!");
     localStorage.setItem('gj-nick', nick);
-    const q = new URLSearchParams({ type: "report", user: nick, name: name, ptype: type, addr: addrStr || "주소 정보 없음", desc: desc || "상세 내용 없음", lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
+    
+    const q = new URLSearchParams({ 
+        type: "report", 
+        user: nick, 
+        name: name, 
+        ptype: type, 
+        addr: addrStr || "주소 정보 없음", 
+        desc: desc || "상세 내용 없음", 
+        lat: pickMarker.getPosition().lat(), 
+        lng: pickMarker.getPosition().lng() 
+    });
+    
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
     alert("제보 완료!"); 
     location.reload();
@@ -198,13 +229,16 @@ function moveToMyLoc() {
 
 function openModal() {
     if (!pickMarker) return alert("지도에 위치를 먼저 찍어주세요!");
-    document.getElementById('addr-text').innerText = "📍 " + (addrStr || "주소 확인 중...");
+    const addrEl = document.getElementById('addr-text');
+    if (addrEl) addrEl.innerText = "📍 " + (addrStr || "주소 확인 중...");
     document.getElementById('modal').classList.remove('hidden');
 }
 
-function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+function closeModal() { 
+    document.getElementById('modal').classList.add('hidden'); 
+}
 
-// [10] 실행 시작
+// [10] 실행 시작 (안전한 로드 확인 로직 포함)
 window.onload = () => {
     preFetchData();
     initMap();
