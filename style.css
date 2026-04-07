@@ -72,3 +72,60 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
     background: #FFD400; border: none; padding: 8px; border-radius: 10px; 
     font-weight: bold; cursor: pointer; margin-top: 5px;
 }
+/* 상세창 내 댓글/별점 입력 영역 */
+.comment-form {
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px dashed #FFD400;
+}
+
+.comment-form h4 {
+    font-size: 13px;
+    margin: 0 0 8px 0;
+    color: #000;
+}
+
+.rating-select {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 8px;
+}
+
+.star-input {
+    cursor: pointer;
+    font-size: 18px;
+    color: #ddd; /* 비활성 별색 */
+    transition: color 0.2s;
+}
+
+.star-input.active {
+    color: #f39c12; /* 활성 별색(노란색) */
+}
+
+.comment-input-wrapper {
+    display: flex;
+    gap: 5px;
+}
+
+.comment-msg-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #eee;
+    border-radius: 15px;
+    font-size: 12px;
+    outline: none;
+}
+
+.comment-msg-input:focus {
+    border-color: #FFD400;
+}
+
+.btn-comment-submit {
+    background: #FFD400;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+}

@@ -148,34 +148,35 @@ function moveToMyLoc() {
 }
 
 function renderMarker(item, src) {
+    if (!item.lat || !item.lng) return;
     const marker = new naver.maps.Marker({
         position: new naver.maps.LatLng(item.lat, item.lng),
         map: map,
         icon: { content: `<div class="label-saved">${item.type}</div>`, anchor: new naver.maps.Point(30, 15) }
     });
 
+    // 상세 정보 및 댓글 입력 폼 통합 HTML
     const contentHtml = `
         <div class="custom-info-window">
-            <div class="rating-avg">⭐ ${item.avgRating} <span style="font-size:12px; color:#999;">(${item.commentCount}개 후기)</span></div>
             <div class="info-title">${item.name}</div>
+            <div class="rating-display">⭐ ${item.avgRating || '0.0'} <small>(${item.commentCount || 0}개 후기)</small></div>
+            
             <div class="info-grid">
                 <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
                 <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
                 <div class="info-full"><span class="info-label">상세위치</span><span class="info-value">${item.address}</span></div>
+                <div class="info-full"><span class="info-label">상세내용</span><span class="info-value">${item.desc || '내용 없음'}</span></div>
             </div>
-            
-            <div class="comment-section">
-                <div class="info-label">이용자 한줄평</div>
-                <div class="comment-input-group">
-                    <select id="rate-${item.name}">
-                        <option value="5">⭐⭐⭐⭐⭐ 5점</option>
-                        <option value="4">⭐⭐⭐⭐ 4점</option>
-                        <option value="3">⭐⭐⭐ 3점</option>
-                        <option value="2">⭐⭐ 2점</option>
-                        <option value="1">⭐ 1점</option>
-                    </select>
-                    <input type="text" id="cmt-${item.name}" placeholder="리얼 후기를 남겨주세요">
-                    <button class="btn-comment" onclick="addComment('${item.name}')">후기 등록</button>
+
+            <div class="comment-form">
+                <h4>실시간 한줄평</h4>
+                <div class="rating-select" id="star-wrap-${item.name.replace(/\s/g, '')}">
+                    ${[1, 2, 3, 4, 5].map(num => `<span class="star-input" onclick="setRating('${item.name.replace(/\s/g, '')}', ${num})">★</span>`).join('')}
+                    <input type="hidden" id="rate-val-${item.name.replace(/\s/g, '')}" value="5">
+                </div>
+                <div class="comment-input-wrapper">
+                    <input type="text" id="comment-msg-${item.name.replace(/\s/g, '')}" class="comment-msg-input" placeholder="매너 있는 댓글을 남겨주세요">
+                    <button class="btn-comment-submit" onclick="submitComment('${item.name}')">등록</button>
                 </div>
             </div>
         </div>
@@ -185,13 +186,16 @@ function renderMarker(item, src) {
         content: contentHtml,
         borderWidth: 0,
         backgroundColor: "transparent",
-        disableAnchor: true
+        disableAnchor: true,
+        pixelOffset: new naver.maps.Point(0, -10)
     });
 
     naver.maps.Event.addListener(marker, 'click', () => {
         if (currentInfo) currentInfo.close();
         info.open(map, marker);
         currentInfo = info;
+        // 열리자마자 5점 기본 활성화
+        setTimeout(() => setRating(item.name.replace(/\s/g, ''), 5), 100);
     });
 }
 
@@ -214,6 +218,37 @@ async function addComment(targetId) {
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
     alert("소중한 별점이 반영되었습니다!");
     location.reload(); // 평균점수 갱신을 위해 새로고침
+}
+
+// 별점 시각화 함수
+function setRating(targetId, score) {
+    const stars = document.querySelectorAll(`#star-wrap-${targetId} .star-input`);
+    document.getElementById(`rate-val-${targetId}`).value = score;
+    stars.forEach((s, idx) => {
+        s.classList.toggle('active', idx < score);
+    });
+}
+
+// 댓글 서버 전송 함수
+async function submitComment(targetName) {
+    const idSafe = targetName.replace(/\s/g, '');
+    const user = localStorage.getItem('gj-nick') || "익명";
+    const msg = document.getElementById(`comment-msg-${idSafe}`).value;
+    const rate = document.getElementById(`rate-val-${idSafe}`).value;
+
+    if (!msg) return alert("내용을 입력해 주세요!");
+
+    const q = new URLSearchParams({
+        type: "add_comment",
+        target_id: targetName, // 장소명을 식별자로 사용
+        user: user,
+        comment: msg,
+        rating: rate
+    });
+
+    await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
+    alert("소중한 후기가 저장되었습니다!");
+    location.reload(); // 평균 별점 갱신을 위해 새로고침
 }
 
 window.onload = initMap;
