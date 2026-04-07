@@ -129,3 +129,32 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
     font-weight: bold;
     cursor: pointer;
 }
+
+/* 상세 정보창 커스텀 프레임 */
+.custom-info-window {
+    background: #ffffff;
+    border: 3px solid #FFD400;
+    border-radius: 20px;
+    padding: 15px;
+    width: 260px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    font-family: 'Pretendard', sans-serif;
+    color: #333;
+}
+
+.info-title { font-size: 18px; font-weight: 900; color: #000; margin-bottom: 10px; border-bottom: 2px solid #FFD400; padding-bottom: 5px; text-align: center; }
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.info-item { display: flex; flex-direction: column; }
+.info-label { font-size: 10px; color: #999; font-weight: bold; }
+.info-value { font-size: 12px; font-weight: 600; color: #000; }
+.info-full { grid-column: span 2; border-top: 1px solid #f0f0f0; padding-top: 8px; }
+
+/* 별점 및 댓글 입력 영역 */
+.feedback-section { margin-top: 10px; border-top: 1px dashed #FFD400; padding-top: 10px; }
+.star-rating { display: flex; gap: 3px; justify-content: center; margin-bottom: 8px; }
+.star-btn { cursor: pointer; font-size: 20px; color: #ddd; transition: color 0.2s; }
+.star-btn.active { color: #FFD400; }
+
+.comment-input-box { display: flex; gap: 5px; }
+.comment-txt { flex: 1; border: 1px solid #eee; border-radius: 10px; padding: 8px; font-size: 12px; outline: none; }
+.comment-submit { background: #FFD400; border: none; border-radius: 10px; padding: 0 12px; font-weight: bold; font-size: 11px; cursor: pointer; }
