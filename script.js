@@ -85,13 +85,35 @@ function setupEvents() {
     naver.maps.Event.addListener(map, 'click', (e) => {
         if (currentInfo) currentInfo.close();
         if (pickMarker) pickMarker.setMap(null);
+        
         pickMarker = new naver.maps.Marker({
-            position: e.coord, map: map,
+            position: e.coord, 
+            map: map,
             icon: { content: '<div class="report-marker"></div>', anchor: new naver.maps.Point(12, 24) }
         });
-        naver.maps.Service.reverseGeocode({ coords: e.coord }, (status, res) => {
+
+        // [고정밀 주소 추출 로직]
+        naver.maps.Service.reverseGeocode({
+            coords: e.coord,
+            orders: [
+                naver.maps.Service.OrderType.ADDR,
+                naver.maps.Service.OrderType.ROAD_ADDR
+            ].join(',')
+        }, (status, res) => {
             if (status === naver.maps.Service.Status.OK) {
-                addrStr = res.v2.address.jibunAddress || res.v2.address.roadAddress;
+                const items = res.v2.results;
+                if (items.length > 0) {
+                    // 도로명 주소가 있으면 최우선, 없으면 지번 주소를 상세히 가져옵니다.
+                    const addr = res.v2.address;
+                    addrStr = addr.roadAddress || addr.jibunAddress;
+                    
+                    // 만약 상세 번지수가 빠져있다면 배열에서 직접 조합합니다.
+                    if (!addrStr || addrStr.split(' ').length < 4) {
+                        const r = items[0];
+                        addrStr = `${r.region.area1.name} ${r.region.area2.name} ${r.region.area3.name} ${r.region.area4.name} ${r.land ? r.land.number1 + '-' + r.land.number2 : ''}`.trim();
+                    }
+                }
+                console.log("확정된 상세 주소:", addrStr);
             }
         });
     });
