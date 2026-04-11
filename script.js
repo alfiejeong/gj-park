@@ -16,16 +16,26 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxXvgAorqlypEhjLc_9w
 
 // [1] 데이터 수급
 function preFetchData() {
+    console.log("🚀 전체 데이터(지도+게시판) 수급 시작...");
     const urls = [
-        `${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`, 
-        `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`
+        `${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`,  // 내 제보 데이터
+        `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`,  // 서울시 데이터
+        `${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}` // [추가] 수다방 데이터
     ];
     
     Promise.all(urls.map(url => fetch(url).then(r => r.json()).catch(e => [])))
     .then(results => {
+        // 1. 지도 데이터 처리
         preloadedData = [];
-        results.forEach(d => { if (Array.isArray(d)) preloadedData.push(...d); });
+        if (Array.isArray(results[0])) preloadedData.push(...results[0]);
+        if (Array.isArray(results[1])) preloadedData.push(...results[1]);
+        
+        // 2. [핵심] 수다방 데이터 미리 저장
+        boardData = Array.isArray(results[2]) ? results[2] : [];
+        
         isDataLoaded = true;
+        console.log("✅ 모든 데이터 준비 완료. 수다방 게시글:", boardData.length);
+        
         if (map) renderAllMarkers();
     });
 }
@@ -148,14 +158,18 @@ function setupEvents() {
     });
 }
 
-// [6] 수다방 게시판 엔진
+// [수정] 서버 호출 없이 메모리에 저장된 데이터를 즉시 보여줌
 function openBoard() {
     const boardPage = document.getElementById('board-page');
     const menu = document.getElementById('floating-menu');
+    
     if (boardPage) {
         boardPage.classList.remove('hidden');
         if (menu) menu.style.display = 'none';
-        fetchBoard();
+        
+        // 이미 preFetchData에서 가져온 boardData를 바로 뿌려줍니다.
+        renderBoard(); 
+        console.log("⚡ 서버 대기 없이 즉시 렌더링 완료");
     }
 }
 
@@ -191,6 +205,18 @@ function renderBoard() {
                 </div>
             `).join('')}
         </div>`;
+}
+
+// [보정] 글 등록이나 댓글 작성 후 실행할 데이터 갱신 함수
+async function refreshBoardData(postId = null) {
+    const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+    boardData = await res.json();
+    
+    if (postId) {
+        viewPostDetail(postId); // 댓글 작성 시 해당 글 유지
+    } else {
+        renderBoard(); // 새 글 등록 시 목록으로 이동
+    }
 }
 
 function showWriteForm() {
