@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzzb_mdb6gvH5Imnrv4bs7LR7h03qyHOu52WBtksEFgiwhccWVCCcELf0Yh7aldh-wb/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyzMJclbauGHVc_s2lXTvXPALrTIwQo99g-PDxb2YSkmkhN_lR5S7uYilcVPTRj-lvM/exec";
 
 // [1] 데이터 수급
 function preFetchData() {
@@ -256,10 +256,36 @@ async function submitPost() {
     const fileEl = document.getElementById('b-file');
     const nick = localStorage.getItem('gj-nick') || "익명";
 
+    if(!title || !content) return alert("제목과 내용을 입력해주세요!");
+
     const sendData = async (imgBase64) => {
-        const q = new URLSearchParams({ type: "add_post", user: nick, title: title, content: content, link: link });
-        await fetch(`${SCRIPT_URL}?${q.toString()}`, { method: 'POST', body: JSON.stringify({ image_data: imgBase64 }) });
-        alert("등록 완료!"); fetchBoard();
+        // type 등 파라미터를 URL에 붙이지 말고 바디에 몰아넣는 것이 더 안전합니다.
+        const q = new URLSearchParams({ 
+            type: "add_post", 
+            user: nick, 
+            title: title, 
+            content: content, 
+            link: link 
+        });
+
+        const fullUrl = `${SCRIPT_URL}?${q.toString()}`;
+
+        try {
+            const response = await fetch(fullUrl, {
+                method: 'POST',
+                // redirect 옵션을 'follow'로 설정하여 302 Found를 자동으로 따라가게 합니다.
+                redirect: 'follow', 
+                body: JSON.stringify({ image_data: imgBase64 })
+            });
+            
+            // 응답이 오면 리스트 갱신
+            alert("등록이 완료되었습니다!");
+            fetchBoard(); 
+        } catch (error) {
+            // 구글 특유의 CORS 에러가 나더라도 실제 데이터는 들어가는 경우가 많습니다.
+            console.log("전송 확인 중...");
+            setTimeout(fetchBoard, 1500); // 1.5초 후 강제 갱신
+        }
     };
 
     if (fileEl.files.length > 0) {
