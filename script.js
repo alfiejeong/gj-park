@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzNHQ8IXXgaAABaCaTLPFbOca3oOsZIo1Dt4Wue3iNhg7R3ppFeAllsWopaqQvn-Xqj/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzBlMWZNB6GS_pr8lu5pXRU4NImKZ1vknba7DqwOKiow12JCcLZcUfazFRtsI2KsgQu/exec";
 
 // [1] 데이터 수급
 function preFetchData() {
@@ -258,39 +258,46 @@ async function submitPost() {
 
     if (!title || !content) return alert("제목과 내용을 입력해주세요!");
 
-    // 로딩 표시 (저장 중임을 알림)
+    // 저장 중 버튼 비활성화
     const saveBtn = document.querySelector('.btn-save');
-    const originalText = saveBtn.innerText;
-    saveBtn.innerText = "저장 중... 잠시만 기다려주세요";
+    saveBtn.innerText = "저장 중... (창을 닫지 마세요)";
     saveBtn.disabled = true;
 
     const sendData = async (imgBase64) => {
-        // [보정] URL 파라미터 대신 모든 데이터를 Body에 JSON으로 담아 보냅니다.
+        // [중요] 모든 데이터를 하나의 JSON 객체로 묶습니다.
         const payload = {
-            type: "add_post",
             user: nick,
             title: title,
             content: content,
             link: link,
-            image_data: imgBase64 // 사진 데이터
+            image_data: imgBase64
         };
 
         try {
-            await fetch(SCRIPT_URL, {
+            // [보정] URL 파라미터로 type=add_post를 명시해줍니다.
+            const response = await fetch(`${SCRIPT_URL}?type=add_post`, {
                 method: 'POST',
-                mode: 'no-cors', // 구글 GAS 통신의 필수 설정
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
             
-            // no-cors 모드에서는 응답을 읽을 수 없으므로 성공으로 간주하고 처리합니다.
-            alert("등록 요청이 완료되었습니다!\n(사진 크기에 따라 드라이브 저장에 시간이 걸릴 수 있습니다)");
-            location.reload(); // 전체 갱신하여 확인
+            const result = await response.json();
+            
+            if (result.res === "ok") {
+                alert("성공적으로 등록되었습니다!");
+                // [핵심] 지도로 가지 않고, 수다물 목록을 다시 불러오고 보여줍니다.
+                const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+                boardData = await res.json();
+                renderBoard(); 
+            } else {
+                alert("서버 저장 실패: " + result.msg);
+            }
         } catch (error) {
             console.error("전송 에러:", error);
-            alert("전송 중 오류가 발생했습니다.");
+            // 구글 특유의 리다이렉트 에러가 나더라도 데이터가 들어가는 경우가 많으므로 확인 절차를 거칩니다.
+            alert("전송 과정에 응답 지연이 있습니다. 목록을 갱신합니다.");
+            fetchBoard(); 
         } finally {
-            saveBtn.innerText = originalText;
+            saveBtn.innerText = "등록하기";
             saveBtn.disabled = false;
         }
     };
