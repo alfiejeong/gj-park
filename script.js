@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwpRMMVQ7axlrAp0wO8zJf2LeGUZgwM0M0e4ie7GAfly5SD_rVVZt25xuOCJ8o8xMG9/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzzb_mdb6gvH5Imnrv4bs7LR7h03qyHOu52WBtksEFgiwhccWVCCcELf0Yh7aldh-wb/exec";
 
 // [1] 데이터 수급
 function preFetchData() {
