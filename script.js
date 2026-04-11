@@ -197,16 +197,88 @@ async function fetchBoard() {
     }
 }
 
-// [수정] 게시글 목록 출력 (시원한 리스트 형태)
+// [3] 목록으로 돌아올 때 글쓰기 버튼 다시 보이기 (보정)
 function renderBoard() {
-    const list = document.getElementById('post-list');
-    list.innerHTML = boardData.map(p => `
-        <div class="post-card" onclick="viewPostDetail('${p.id}')">
-            <div style="font-size:12px; color:#999; margin-bottom:5px;">${p.author} | ${new Date(p.date).toLocaleDateString()}</div>
-            <h3 style="margin:0 0 10px 0; font-size:18px;">${p.title}</h3>
-            <div style="color:#FFD400; font-size:12px;">💬 댓글 ${p.comments ? p.comments.length : 0}</div>
+    const list = document.getElementById('board-content');
+    document.getElementById('write-btn').style.display = 'block'; // 버튼 부활
+    
+    list.innerHTML = `
+        <div id="post-list">
+            ${boardData.map(p => `
+                <div class="post-card" onclick="viewPostDetail('${p.id}')" style="cursor:pointer; border-bottom:1px solid #eee; padding:20px 0;">
+                    <div style="font-size:12px; color:#999; margin-bottom:5px;">${p.author}</div>
+                    <h3 style="margin:0 0 8px 0; font-size:18px;">${p.title}</h3>
+                    <div style="color:#FFD400; font-size:12px; font-weight:bold;">💬 댓글 ${p.comments ? p.comments.length : 0}</div>
+                </div>
+            `).join('')}
         </div>
-    `).join('');
+    `;
+}
+
+// [1] 글쓰기 폼 표시 함수 (ReferenceError 해결)
+function showWriteForm() {
+    console.log("🚀 글쓰기 모드 전환");
+    const boardContent = document.getElementById('board-content');
+    
+    // 게시글 목록 대신 글쓰기 양식을 화면에 그립니다.
+    boardContent.innerHTML = `
+        <div class="write-form" style="animation: fadeIn 0.3s;">
+            <button onclick="renderBoard()" class="back-btn" style="margin-bottom:15px;">← 목록으로 돌아가기</button>
+            <h4 style="margin-bottom:15px;">새로운 수다 남기기 ✍️</h4>
+            <input type="text" id="b-title" placeholder="제목을 입력하세요" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
+            <textarea id="b-content" placeholder="내용을 입력하세요" style="width:100%; height:150px; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box; resize:none;"></textarea>
+            <input type="text" id="b-link" placeholder="관련 링크 주소 (선택)" style="width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
+            <div style="margin-bottom:15px;">
+                <label style="font-size:12px; font-weight:bold; color:#666;">📸 사진 첨부</label>
+                <input type="file" id="b-file" accept="image/*" style="width:100%; margin-top:5px;">
+            </div>
+            <button onclick="submitPost()" class="btn-save" style="width:100%; background:#FFD400; font-size:18px; padding:15px;">등록하기</button>
+        </div>
+    `;
+    // 글쓰기 창이 열리면 플로팅 글쓰기 버튼은 숨깁니다.
+    document.getElementById('write-btn').style.display = 'none';
+}
+
+// [2] 게시글 상세 보기 함수 (ReferenceError 해결)
+function viewPostDetail(postId) {
+    console.log("🚀 게시글 상세 보기 ID:", postId);
+    const post = boardData.find(p => String(p.id) === String(postId));
+    if (!post) return alert("게시글을 찾을 수 없습니다.");
+
+    const boardContent = document.getElementById('board-content');
+    
+    // 상세 페이지 구성
+    boardContent.innerHTML = `
+        <div class="post-detail" style="animation: fadeIn 0.3s;">
+            <button onclick="renderBoard()" class="back-btn" style="margin-bottom:15px;">← 목록으로</button>
+            <h2 style="margin:0 0 10px 0;">${post.title}</h2>
+            <div style="font-size:13px; color:#999; margin-bottom:20px;">
+                작성자: ${post.author} | ${new Date(post.date).toLocaleString()}
+            </div>
+            
+            ${post.imageUrl ? `<img src="${post.imageUrl}" style="width:100%; border-radius:15px; margin-bottom:20px;">` : ""}
+            
+            <p style="font-size:15px; line-height:1.7; white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
+            
+            ${post.link ? `<a href="${post.link}" target="_blank" style="display:block; padding:12px; background:#f0f7ff; color:#007bff; text-decoration:none; border-radius:10px; margin-bottom:20px; font-weight:bold;">🔗 관련 링크 바로가기</a>` : ""}
+
+            <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
+                <h5 style="margin-bottom:15px;">댓글 (${post.comments ? post.comments.length : 0})</h5>
+                <div id="b-comment-list">
+                    ${post.comments && post.comments.length > 0 ? post.comments.map(c => `
+                        <div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:8px; font-size:13px;">
+                            <b style="color:#333;">${c.user}</b>: ${c.text}
+                        </div>
+                    `).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
+                </div>
+                <div style="display:flex; gap:8px; margin-top:20px;">
+                    <input type="text" id="cmt-in-${post.id}" placeholder="댓글을 입력하세요" style="flex:1; padding:10px; border:1px solid #ddd; border-radius:10px;">
+                    <button onclick="submitBoardComment('${post.id}')" style="background:#FFD400; border:none; border-radius:10px; padding:0 15px; font-weight:bold; cursor:pointer;">등록</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById('write-btn').style.display = 'none';
 }
 
 async function submitPost() {
