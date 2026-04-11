@@ -12,29 +12,39 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxXvgAorqlypEhjLc_9w1l4X2AZ2TbhCw7UjlUA5crtgI0FzW3CcB5r2bs34xQpcfRX/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyI50yKu4DzhElmU87lE2W3awdrGd9ZtX2no2opBs_no43o1oOuJORl68JS6xe8RNa2/exec";
 
-// [1] 데이터 수급
+// [보정] 수다방 데이터까지 포함한 통합 수급 로직
 function preFetchData() {
-    console.log("🚀 전체 데이터(지도+게시판) 수급 시작...");
+    console.log("🚀 지능형 통합 데이터 수급 시작...");
     const urls = [
-        `${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`,  // 내 제보 데이터
-        `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`,  // 서울시 데이터
-        `${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}` // [추가] 수다방 데이터
+        `${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`,
+        `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`,
+        `${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`
     ];
     
-    Promise.all(urls.map(url => fetch(url).then(r => r.json()).catch(e => [])))
+    Promise.all(urls.map(url => 
+        fetch(url, {
+            method: 'GET',
+            // 구글 서버의 302 리다이렉트를 끝까지 추적하게 합니다.
+            redirect: 'follow' 
+        })
+        .then(r => r.json())
+        .catch(e => {
+            console.error("단일 데이터 로드 실패:", e);
+            return [];
+        })
+    ))
     .then(results => {
-        // 1. 지도 데이터 처리
         preloadedData = [];
         if (Array.isArray(results[0])) preloadedData.push(...results[0]);
         if (Array.isArray(results[1])) preloadedData.push(...results[1]);
         
-        // 2. [핵심] 수다방 데이터 미리 저장
+        // 미리 가져온 게시판 데이터 저장
         boardData = Array.isArray(results[2]) ? results[2] : [];
         
         isDataLoaded = true;
-        console.log("✅ 모든 데이터 준비 완료. 수다방 게시글:", boardData.length);
+        console.log("✅ 광속 수급 완료. 지도 데이터:", preloadedData.length, "건 / 수다방:", boardData.length, "건");
         
         if (map) renderAllMarkers();
     });
