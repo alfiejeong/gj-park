@@ -149,25 +149,29 @@ function setupEvents() {
     });
 }
 
-// [5] 수다방 관련 (괄호 수정 완료)
+// [5] 수다방 관련 완벽 수정본
 function openBoard() {
-    console.log("수다방 진입 시도...");
+    console.log("🚀 수다방 진입 시도...");
     const modal = document.getElementById('board-modal');
     if (modal) {
-// [수정] 클래스 제거와 동시에 스타일을 강제로 주입합니다.
+        // [강제 활성화] hidden 클래스 제거와 동시에 스타일 직접 주입
         modal.classList.remove('hidden');
-        modal.style.display = 'flex'; // 혹은 block
-        modal.style.zIndex = '9999'; // 지도보다 위로 올립니다.
+        modal.style.display = 'flex'; 
+        modal.style.zIndex = '9999'; 
         
-        fetchBoard(); // 데이터 가져오기
+        fetchBoard(); // 데이터 호출
     } else {
-        console.error("❌ 오류: HTML 내에 board-modal 이라는 ID가 없습니다.");
+        console.error("❌ 오류: HTML 내에 board-modal 요소가 없습니다.");
     }
 }
 
 function closeBoard() { 
+    console.log("🚀 수다방 닫기 시도...");
     const modal = document.getElementById('board-modal');
-    if (modal) modal.classList.add('hidden'); 
+    if (modal) {
+        modal.classList.add('hidden'); 
+        modal.style.display = 'none';
+    }
 }
 
 // [진단용] 게시글 조회 함수
