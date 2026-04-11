@@ -154,10 +154,14 @@ function openBoard() {
     console.log("수다방 진입 시도...");
     const modal = document.getElementById('board-modal');
     if (modal) {
+// [수정] 클래스 제거와 동시에 스타일을 강제로 주입합니다.
         modal.classList.remove('hidden');
-        fetchBoard();
+        modal.style.display = 'flex'; // 혹은 block
+        modal.style.zIndex = '9999'; // 지도보다 위로 올립니다.
+        
+        fetchBoard(); // 데이터 가져오기
     } else {
-        alert("수다방 화면(모달) 코드가 HTML에 없습니다.");
+        console.error("❌ 오류: HTML 내에 board-modal 이라는 ID가 없습니다.");
     }
 }
 
