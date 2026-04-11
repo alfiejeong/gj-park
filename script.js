@@ -156,10 +156,16 @@ function getBase64(file) {
 
 // [추가] 수다방 열기/닫기
 function openBoard() {
-    fetchBoard();
-    document.getElementById('board-modal').classList.remove('hidden');
+console.log("수다방 진입 시도...");
+    const modal = document.getElementById('board-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        fetchBoard(); // 서버에서 게시글 목록 가져오기
+    } else {
+        alert("수다방 화면(모달) 코드가 HTML에 없습니다.");
 }
-function closeBoard() { document.getElementById('board-modal').classList.add('hidden'); }
+function closeBoard() { const modal = document.getElementById('board-modal');
+    if (modal) modal.classList.add('hidden'); }
 
 // [추가] 게시글 조회
 async function fetchBoard() {
