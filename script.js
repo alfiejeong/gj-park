@@ -166,29 +166,56 @@ function closeBoard() {
     if (modal) modal.classList.add('hidden'); 
 }
 
+// [진단용] 게시글 조회 함수
 async function fetchBoard() {
-    const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
-    boardData = await res.json();
-    renderBoard();
+    console.log("🚀 1. fetchBoard 엔진 가동: ", SCRIPT_URL);
+    try {
+        const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+        console.log("🚀 2. 서버 응답 코드:", res.status); 
+        
+        // JSON으로 바로 파싱하지 말고 텍스트로 먼저 받아봅니다.
+        const rawText = await res.text();
+        console.log("🚀 3. 서버에서 온 날것의 데이터:", rawText);
+
+        if (rawText.startsWith("<!DOCTYPE")) {
+            console.error("❌ 오류: 서버가 데이터 대신 구글 로그인 페이지(HTML)를 보냈습니다. 권한 설정 재확인 필요!");
+            return;
+        }
+
+        boardData = JSON.parse(rawText);
+        console.log("🚀 4. 파싱 성공! 게시글 개수:", boardData.length);
+        renderBoard();
+    } catch (err) {
+        console.error("❌ 5. fetchBoard 과정에서 치명적 에러 발생:", err);
+    }
 }
 
+// [진단용] 게시글 출력 함수
 function renderBoard() {
+    console.log("🚀 6. renderBoard 시작");
     const list = document.getElementById('post-list');
-    list.innerHTML = boardData.map(p => `
-        <div class="post-item">
-            <strong>${p.title}</strong> <small>by ${p.author}</small>
-            <p>${p.content}</p>
-            ${p.imageUrl ? `<img src="${p.imageUrl}" style="width:100%;">` : ""}
-            ${p.link ? `<a href="${p.link}" target="_blank">🔗 링크 보기</a>` : ""}
-            <div class="b-comments">
-                ${p.comments.map(c => `<div class="b-cmt"><b>${c.user}:</b> ${c.text}</div>`).join('')}
+    
+    if (!list) {
+        console.error("❌ 오류: HTML에 'post-list'라는 ID를 가진 요소가 없습니다! ID 중복 여부를 확인하세요.");
+        return;
+    }
+
+    if (!boardData || boardData.length === 0) {
+        list.innerHTML = "<p style='text-align:center; padding:20px;'>아직 올라온 게시글이 없습니다.</p>";
+        console.log("🚀 7. 게시글이 없어 빈 화면 출력");
+        return;
+    }
+
+    list.innerHTML = boardData.map(p => {
+        console.log("🚀 8. 게시글 렌더링 중:", p.title);
+        return `
+            <div class="post-item" style="border:1px solid #eee; margin-bottom:10px; padding:10px;">
+                <strong>${p.title}</strong> <small>by ${p.author}</small>
+                <p>${p.content}</p>
             </div>
-            <div class="b-cmt-input">
-                <input type="text" id="cmt-in-${p.id}" placeholder="댓글 입력">
-                <button onclick="submitBoardComment('${p.id}')">등록</button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
+    console.log("🚀 9. 모든 게시글 출력 완료");
 }
 
 async function submitPost() {
