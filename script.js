@@ -6,7 +6,7 @@ var preloadedData = [];
 var isDataLoaded = false; 
 var boardData = [];
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwnU-gV5WFN44eomPBZnKeEndLGUsCmvsQu1hOdCK4B1AGuNi-EO_4tDuz0qPFxxGsz/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwpRMMVQ7axlrAp0wO8zJf2LeGUZgwM0M0e4ie7GAfly5SD_rVVZt25xuOCJ8o8xMG9/exec";
 
 // [1] 데이터 수급
 function preFetchData() {
