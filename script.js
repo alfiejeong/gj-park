@@ -39,12 +39,18 @@ function initMap() {
 function setupMap(lat, lng) {
     map = new naver.maps.Map('map', { center: new naver.maps.LatLng(lat, lng), zoom: 15, background: '#FFD400' });
     naver.maps.Event.addListener(map, 'tilesloaded', function() {
-        document.getElementById('loading-screen').style.opacity = '0';
-        setTimeout(() => { document.getElementById('loading-screen').style.display = 'none'; }, 500);
+        const screen = document.getElementById('loading-screen');
+        if (screen) {
+            screen.style.opacity = '0';
+            setTimeout(() => { screen.style.display = 'none'; }, 500);
+        }
         if (isDataLoaded) renderAllMarkers();
     });
     const oldNick = localStorage.getItem('gj-nick');
-    if (oldNick) document.getElementById('nick').value = oldNick;
+    if (oldNick) {
+        const nickEl = document.getElementById('nick');
+        if (nickEl) nickEl.value = oldNick;
+    }
     setupEvents();
 }
 
@@ -66,7 +72,7 @@ function renderAllMarkers() {
     });
 }
 
-// [4] 상세 정보창 (디자인 및 후기 리스트)
+// [4] 상세 정보창
 function attachInfoWindow(marker, item) {
     const idSafe = (item.name || "noname").replace(/\s/g, '');
     let commentsHtml = "";
@@ -114,7 +120,6 @@ function attachInfoWindow(marker, item) {
     });
 }
 
-// [5] 부가 기능
 function setRatingUI(id, score) {
     const stars = document.querySelectorAll(`#star-wrap-${id} .star-btn`);
     const input = document.getElementById(`rate-val-${id}`);
@@ -144,37 +149,29 @@ function setupEvents() {
     });
 }
 
-// [추가] 이미지 파일을 문자로 변환
-function getBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-    });
-}
-
-// [추가] 수다방 열기/닫기
+// [5] 수다방 관련 (괄호 수정 완료)
 function openBoard() {
-console.log("수다방 진입 시도...");
+    console.log("수다방 진입 시도...");
     const modal = document.getElementById('board-modal');
     if (modal) {
         modal.classList.remove('hidden');
-        fetchBoard(); // 서버에서 게시글 목록 가져오기
+        fetchBoard();
     } else {
         alert("수다방 화면(모달) 코드가 HTML에 없습니다.");
+    }
 }
-function closeBoard() { const modal = document.getElementById('board-modal');
-    if (modal) modal.classList.add('hidden'); }
 
-// [추가] 게시글 조회
+function closeBoard() { 
+    const modal = document.getElementById('board-modal');
+    if (modal) modal.classList.add('hidden'); 
+}
+
 async function fetchBoard() {
     const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
     boardData = await res.json();
     renderBoard();
 }
 
-// [추가] 게시글 출력
 function renderBoard() {
     const list = document.getElementById('post-list');
     list.innerHTML = boardData.map(p => `
@@ -194,7 +191,6 @@ function renderBoard() {
     `).join('');
 }
 
-// [추가] 게시글 등록
 async function submitPost() {
     const title = document.getElementById('b-title').value;
     const content = document.getElementById('b-content').value;
@@ -203,32 +199,28 @@ async function submitPost() {
     const nick = localStorage.getItem('gj-nick') || "익명";
 
     let imgBase64 = "";
-    if (fileEl.files.length > 0) imgBase64 = await getBase64(fileEl.files[0]);
-
-    const q = new URLSearchParams({
-        type: "add_post",
-        user: nick,
-        title: title,
-        content: content,
-        link: link
-    });
-
-    await fetch(`${SCRIPT_URL}?${q.toString()}`, {
-        method: 'POST',
-        body: JSON.stringify({ image_data: imgBase64 })
-    });
-    alert("게시글 등록 완료!");
-    fetchBoard();
+    if (fileEl.files.length > 0) {
+        const reader = new FileReader();
+        reader.readAsDataURL(fileEl.files[0]);
+        reader.onload = async () => {
+            imgBase64 = reader.result;
+            const q = new URLSearchParams({ type: "add_post", user: nick, title: title, content: content, link: link });
+            await fetch(`${SCRIPT_URL}?${q.toString()}`, { method: 'POST', body: JSON.stringify({ image_data: imgBase64 }) });
+            alert("게시글 등록 완료!"); fetchBoard();
+        };
+    } else {
+        const q = new URLSearchParams({ type: "add_post", user: nick, title: title, content: content, link: link });
+        await fetch(`${SCRIPT_URL}?${q.toString()}`, { method: 'POST', body: JSON.stringify({ image_data: "" }) });
+        alert("게시글 등록 완료!"); fetchBoard();
+    }
 }
 
-// [추가] 게시판 댓글 등록
 async function submitBoardComment(postId) {
     const nick = localStorage.getItem('gj-nick') || "익명";
     const msg = document.getElementById(`cmt-in-${postId}`).value;
     const q = new URLSearchParams({ type: "add_board_comment", post_id: postId, user: nick, comment: msg });
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
-    alert("댓글 완료!");
-    fetchBoard();
+    alert("댓글 완료!"); fetchBoard();
 }
 
 async function submitReport() {
