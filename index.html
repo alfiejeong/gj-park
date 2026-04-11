@@ -17,6 +17,21 @@
         </div>
     </div>
 
+<div id="board-page" class="hidden">
+    <div class="board-container">
+        <div class="board-header">
+            <h2>💬 수다방</h2>
+            <button onclick="closeBoard()" class="back-btn">← 지도로 돌아가기</button>
+        </div>
+        
+        <div id="board-content">
+            <div id="post-list"></div>
+        </div>
+
+        <button id="write-btn" onclick="showWriteForm()">+ 글쓰기</button>
+    </div>
+</div>
+
     <div id="header-bar">
         <h1>거지주차.com</h1>
         <div class="by-line">by 쌍칼(alfiejeong@gmail.com)</div>
@@ -27,7 +42,7 @@
     <div id="floating-menu">
         <button onclick="moveToMyLoc()" class="f-btn">📍 내위치</button>
         <button onclick="openModal()" class="f-btn primary">📢 제보하기</button>
-        <button onclick="openBoard()" class="f-btn">💬 수다방</button>
+       <button id="board-toggle-btn" onclick="openBoard()" class="f-btn">💬 수다방</button>
         <button onclick="alert('준비 중')" class="f-btn">🏆 랭킹</button>
     </div>
 

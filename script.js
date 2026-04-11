@@ -149,28 +149,27 @@ function setupEvents() {
     });
 }
 
-// [5] 수다방 관련 완벽 수정본
+// [수정] 수다방(전체 화면) 열기
 function openBoard() {
-    console.log("🚀 수다방 진입 시도...");
-    const modal = document.getElementById('board-modal');
-    if (modal) {
-        // [강제 활성화] hidden 클래스 제거와 동시에 스타일 직접 주입
-        modal.classList.remove('hidden');
-        modal.style.display = 'flex'; 
-        modal.style.zIndex = '9999'; 
-        
-        fetchBoard(); // 데이터 호출
-    } else {
-        console.error("❌ 오류: HTML 내에 board-modal 요소가 없습니다.");
+    console.log("🚀 수다방 게시판 모드 진입");
+    const boardPage = document.getElementById('board-page');
+    const menu = document.getElementById('floating-menu');
+    
+    if (boardPage) {
+        boardPage.classList.remove('hidden');
+        if (menu) menu.style.display = 'none'; // 게시판에선 메뉴 숨김
+        fetchBoard(); // 데이터 로드
     }
 }
 
-function closeBoard() { 
-    console.log("🚀 수다방 닫기 시도...");
-    const modal = document.getElementById('board-modal');
-    if (modal) {
-        modal.classList.add('hidden'); 
-        modal.style.display = 'none';
+// [수정] 지도로 돌아가기
+function closeBoard() {
+    const boardPage = document.getElementById('board-page');
+    const menu = document.getElementById('floating-menu');
+    
+    if (boardPage) {
+        boardPage.classList.add('hidden');
+        if (menu) menu.style.display = 'flex'; // 메뉴 다시 표시
     }
 }
 
@@ -198,32 +197,16 @@ async function fetchBoard() {
     }
 }
 
-// [진단용] 게시글 출력 함수
+// [수정] 게시글 목록 출력 (시원한 리스트 형태)
 function renderBoard() {
-    console.log("🚀 6. renderBoard 시작");
     const list = document.getElementById('post-list');
-    
-    if (!list) {
-        console.error("❌ 오류: HTML에 'post-list'라는 ID를 가진 요소가 없습니다! ID 중복 여부를 확인하세요.");
-        return;
-    }
-
-    if (!boardData || boardData.length === 0) {
-        list.innerHTML = "<p style='text-align:center; padding:20px;'>아직 올라온 게시글이 없습니다.</p>";
-        console.log("🚀 7. 게시글이 없어 빈 화면 출력");
-        return;
-    }
-
-    list.innerHTML = boardData.map(p => {
-        console.log("🚀 8. 게시글 렌더링 중:", p.title);
-        return `
-            <div class="post-item" style="border:1px solid #eee; margin-bottom:10px; padding:10px;">
-                <strong>${p.title}</strong> <small>by ${p.author}</small>
-                <p>${p.content}</p>
-            </div>
-        `;
-    }).join('');
-    console.log("🚀 9. 모든 게시글 출력 완료");
+    list.innerHTML = boardData.map(p => `
+        <div class="post-card" onclick="viewPostDetail('${p.id}')">
+            <div style="font-size:12px; color:#999; margin-bottom:5px;">${p.author} | ${new Date(p.date).toLocaleDateString()}</div>
+            <h3 style="margin:0 0 10px 0; font-size:18px;">${p.title}</h3>
+            <div style="color:#FFD400; font-size:12px;">💬 댓글 ${p.comments ? p.comments.length : 0}</div>
+        </div>
+    `).join('');
 }
 
 async function submitPost() {
