@@ -15,7 +15,7 @@ var boardData = [];
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyEEwx7bdNI-1rjXXu4qa3fXD8_QNaJvd_Q0EUAYNP_oczYjeVLQVhgJ3U-r6vAVv9m/exec";
 
 // [보정] 수다방 데이터까지 포함한 통합 수급 로직
-/ [수정] CORS 에러를 최소화하는 데이터 수급 로직
+// [수정] CORS 에러를 최소화하는 데이터 수급 로직
 async function preFetchData() {
     console.log("🚀 강제 데이터 동기화 시작...");
     const urls = [
