@@ -4,8 +4,9 @@ var pickMarker = null;
 var addrStr = "";
 var preloadedData = []; 
 var isDataLoaded = false; 
+var boardData = [];
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby4hm3_efDy4Y5IGhtj2INu3CWbH2iFe16lnIXxebGAalt_4Vmk5ncJuytQTGZT1Q/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz29wJzt5MqkTL7bRIgcPQA0OsFI3xbDZ24RFN2VgtVHMrqnn7BZX6Lr9qeso57bfmz/exec";
 
 // [1] 데이터 수급
 function preFetchData() {
@@ -141,6 +142,87 @@ function setupEvents() {
             if (status === naver.maps.Service.Status.OK) { addrStr = res.v2.address.roadAddress || res.v2.address.jibunAddress; }
         });
     });
+}
+
+// [추가] 이미지 파일을 문자로 변환
+function getBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+    });
+}
+
+// [추가] 수다방 열기/닫기
+function openBoard() {
+    fetchBoard();
+    document.getElementById('board-modal').classList.remove('hidden');
+}
+function closeBoard() { document.getElementById('board-modal').classList.add('hidden'); }
+
+// [추가] 게시글 조회
+async function fetchBoard() {
+    const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+    boardData = await res.json();
+    renderBoard();
+}
+
+// [추가] 게시글 출력
+function renderBoard() {
+    const list = document.getElementById('post-list');
+    list.innerHTML = boardData.map(p => `
+        <div class="post-item">
+            <strong>${p.title}</strong> <small>by ${p.author}</small>
+            <p>${p.content}</p>
+            ${p.imageUrl ? `<img src="${p.imageUrl}" style="width:100%;">` : ""}
+            ${p.link ? `<a href="${p.link}" target="_blank">🔗 링크 보기</a>` : ""}
+            <div class="b-comments">
+                ${p.comments.map(c => `<div class="b-cmt"><b>${c.user}:</b> ${c.text}</div>`).join('')}
+            </div>
+            <div class="b-cmt-input">
+                <input type="text" id="cmt-in-${p.id}" placeholder="댓글 입력">
+                <button onclick="submitBoardComment('${p.id}')">등록</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// [추가] 게시글 등록
+async function submitPost() {
+    const title = document.getElementById('b-title').value;
+    const content = document.getElementById('b-content').value;
+    const link = document.getElementById('b-link').value;
+    const fileEl = document.getElementById('b-file');
+    const nick = localStorage.getItem('gj-nick') || "익명";
+
+    let imgBase64 = "";
+    if (fileEl.files.length > 0) imgBase64 = await getBase64(fileEl.files[0]);
+
+    const q = new URLSearchParams({
+        type: "add_post",
+        user: nick,
+        title: title,
+        content: content,
+        link: link
+    });
+
+    await fetch(`${SCRIPT_URL}?${q.toString()}`, {
+        method: 'POST',
+        body: JSON.stringify({ image_data: imgBase64 })
+    });
+    alert("게시글 등록 완료!");
+    fetchBoard();
+}
+
+// [추가] 게시판 댓글 등록
+async function submitBoardComment(postId) {
+    const nick = localStorage.getItem('gj-nick') || "익명";
+    const msg = document.getElementById(`cmt-in-${postId}`).value;
+    const q = new URLSearchParams({ type: "add_board_comment", post_id: postId, user: nick, comment: msg });
+    await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
+    alert("댓글 완료!");
+    fetchBoard();
 }
 
 async function submitReport() {

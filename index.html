@@ -27,7 +27,7 @@
     <div id="floating-menu">
         <button onclick="moveToMyLoc()" class="f-btn">📍 내위치</button>
         <button onclick="openModal()" class="f-btn primary">📢 제보하기</button>
-        <button onclick="alert('준비 중')" class="f-btn">💬 수다방</button>
+        <button onclick="openBoard()" class="f-btn">💬 수다방</button>
         <button onclick="alert('준비 중')" class="f-btn">🏆 랭킹</button>
     </div>
 
@@ -51,6 +51,23 @@
             </div>
         </div>
     </div>
+
+<div id="board-modal" class="hidden">
+    <div class="modal-content board-content">
+        <h3>💬 수다방</h3>
+        <div id="post-list"></div>
+        <hr>
+        <h4>글쓰기</h4>
+        <input type="text" id="b-title" placeholder="제목">
+        <textarea id="b-content" placeholder="내용을 입력하세요"></textarea>
+        <input type="text" id="b-link" placeholder="참조 링크 (선택)">
+        <input type="file" id="b-file" accept="image/*">
+        <div class="modal-btns">
+            <button onclick="submitPost()" class="btn-save">등록</button>
+            <button onclick="closeBoard()" class="btn-cancel">닫기</button>
+        </div>
+    </div>
+</div>
 
     <script src="script.js"></script>
 </body>
