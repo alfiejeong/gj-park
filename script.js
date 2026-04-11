@@ -12,42 +12,48 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyI50yKu4DzhElmU87lE2W3awdrGd9ZtX2no2opBs_no43o1oOuJORl68JS6xe8RNa2/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyEEwx7bdNI-1rjXXu4qa3fXD8_QNaJvd_Q0EUAYNP_oczYjeVLQVhgJ3U-r6vAVv9m/exec";
 
 // [보정] 수다방 데이터까지 포함한 통합 수급 로직
-function preFetchData() {
-    console.log("🚀 지능형 통합 데이터 수급 시작...");
+/ [수정] CORS 에러를 최소화하는 데이터 수급 로직
+async function preFetchData() {
+    console.log("🚀 강제 데이터 동기화 시작...");
     const urls = [
         `${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`,
         `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`,
         `${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`
     ];
     
-    Promise.all(urls.map(url => 
-        fetch(url, {
-            method: 'GET',
-            // 구글 서버의 302 리다이렉트를 끝까지 추적하게 합니다.
-            redirect: 'follow' 
-        })
-        .then(r => r.json())
-        .catch(e => {
-            console.error("단일 데이터 로드 실패:", e);
-            return [];
-        })
-    ))
-    .then(results => {
-        preloadedData = [];
-        if (Array.isArray(results[0])) preloadedData.push(...results[0]);
-        if (Array.isArray(results[1])) preloadedData.push(...results[1]);
-        
-        // 미리 가져온 게시판 데이터 저장
-        boardData = Array.isArray(results[2]) ? results[2] : [];
+    try {
+        // Promise.all 대신 하나씩 순차적으로 가져와 부하를 줄여봅니다.
+        for (let i = 0; i < urls.length; i++) {
+            try {
+                const response = await fetch(urls[i], {
+                    method: 'GET',
+                    mode: 'cors', // 명시적으로 cors 모드 설정
+                    credentials: 'omit' // 쿠키 전송 제외로 보안 검사 완화
+                });
+                
+                const data = await response.json();
+                
+                if (i === 0 || i === 1) {
+                    if (Array.isArray(data)) preloadedData.push(...data);
+                } else {
+                    boardData = Array.isArray(data) ? data : [];
+                }
+                console.log(`✅ ${i+1}번 데이터 로드 성공`);
+            } catch (err) {
+                console.error(`${i+1}번 데이터 로드 실패:`, err);
+            }
+        }
         
         isDataLoaded = true;
-        console.log("✅ 광속 수급 완료. 지도 데이터:", preloadedData.length, "건 / 수다방:", boardData.length, "건");
-        
+        console.log("🏁 최종 수급 완료. 지도:", preloadedData.length, "/ 수다방:", boardData.length);
         if (map) renderAllMarkers();
-    });
+        
+    } catch (e) {
+        console.error("통합 수급 프로세스 에러:", e);
+    }
 }
 
 // [2] 지도 설정
