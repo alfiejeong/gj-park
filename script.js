@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyzMJclbauGHVc_s2lXTvXPALrTIwQo99g-PDxb2YSkmkhN_lR5S7uYilcVPTRj-lvM/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzNHQ8IXXgaAABaCaTLPFbOca3oOsZIo1Dt4Wue3iNhg7R3ppFeAllsWopaqQvn-Xqj/exec";
 
 // [1] 데이터 수급
 function preFetchData() {
@@ -256,35 +256,42 @@ async function submitPost() {
     const fileEl = document.getElementById('b-file');
     const nick = localStorage.getItem('gj-nick') || "익명";
 
-    if(!title || !content) return alert("제목과 내용을 입력해주세요!");
+    if (!title || !content) return alert("제목과 내용을 입력해주세요!");
+
+    // 로딩 표시 (저장 중임을 알림)
+    const saveBtn = document.querySelector('.btn-save');
+    const originalText = saveBtn.innerText;
+    saveBtn.innerText = "저장 중... 잠시만 기다려주세요";
+    saveBtn.disabled = true;
 
     const sendData = async (imgBase64) => {
-        // type 등 파라미터를 URL에 붙이지 말고 바디에 몰아넣는 것이 더 안전합니다.
-        const q = new URLSearchParams({ 
-            type: "add_post", 
-            user: nick, 
-            title: title, 
-            content: content, 
-            link: link 
-        });
-
-        const fullUrl = `${SCRIPT_URL}?${q.toString()}`;
+        // [보정] URL 파라미터 대신 모든 데이터를 Body에 JSON으로 담아 보냅니다.
+        const payload = {
+            type: "add_post",
+            user: nick,
+            title: title,
+            content: content,
+            link: link,
+            image_data: imgBase64 // 사진 데이터
+        };
 
         try {
-            const response = await fetch(fullUrl, {
+            await fetch(SCRIPT_URL, {
                 method: 'POST',
-                // redirect 옵션을 'follow'로 설정하여 302 Found를 자동으로 따라가게 합니다.
-                redirect: 'follow', 
-                body: JSON.stringify({ image_data: imgBase64 })
+                mode: 'no-cors', // 구글 GAS 통신의 필수 설정
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
             
-            // 응답이 오면 리스트 갱신
-            alert("등록이 완료되었습니다!");
-            fetchBoard(); 
+            // no-cors 모드에서는 응답을 읽을 수 없으므로 성공으로 간주하고 처리합니다.
+            alert("등록 요청이 완료되었습니다!\n(사진 크기에 따라 드라이브 저장에 시간이 걸릴 수 있습니다)");
+            location.reload(); // 전체 갱신하여 확인
         } catch (error) {
-            // 구글 특유의 CORS 에러가 나더라도 실제 데이터는 들어가는 경우가 많습니다.
-            console.log("전송 확인 중...");
-            setTimeout(fetchBoard, 1500); // 1.5초 후 강제 갱신
+            console.error("전송 에러:", error);
+            alert("전송 중 오류가 발생했습니다.");
+        } finally {
+            saveBtn.innerText = originalText;
+            saveBtn.disabled = false;
         }
     };
 
