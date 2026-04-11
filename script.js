@@ -1,3 +1,8 @@
+/**
+ * 거지주차.com 통합 스크립트
+ * [수정내역] 중복 선언 방지, 이미지 경로 자동 보정, 댓글 후 상세페이지 유지
+ */
+
 var map = null;
 var currentInfo = null;
 var pickMarker = null;
@@ -6,11 +11,11 @@ var preloadedData = [];
 var isDataLoaded = false; 
 var boardData = [];
 
+// [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwpRMMVQ7axlrAp0wO8zJf2LeGUZgwM0M0e4ie7GAfly5SD_rVVZt25xuOCJ8o8xMG9/exec";
 
 // [1] 데이터 수급
 function preFetchData() {
-    console.log("데이터 수급 시작...");
     const urls = [
         `${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`, 
         `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`
@@ -21,7 +26,6 @@ function preFetchData() {
         preloadedData = [];
         results.forEach(d => { if (Array.isArray(d)) preloadedData.push(...d); });
         isDataLoaded = true;
-        console.log("데이터 수급 완료:", preloadedData.length);
         if (map) renderAllMarkers();
     });
 }
@@ -72,20 +76,14 @@ function renderAllMarkers() {
     });
 }
 
-// [4] 상세 정보창
+// [4] 상세 정보창 (장소 후기용)
 function attachInfoWindow(marker, item) {
     const idSafe = (item.name || "noname").replace(/\s/g, '');
-    let commentsHtml = "";
-    
-    if (item.comments && item.comments.length > 0) {
-        commentsHtml = item.comments.map(c => `
-            <div class="comment-item" style="padding:8px 0; border-bottom:1px solid #f9f9f9;">
-                <div style="font-size:11px; font-weight:bold; color:#555;">${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
-                <div style="font-size:12px; color:#333; margin-top:2px;">${c.comment}</div>
-            </div>`).join('');
-    } else {
-        commentsHtml = "<div style='font-size:11px; color:#999; text-align:center; padding:15px;'>등록된 후기가 없습니다.</div>";
-    }
+    let commentsHtml = item.comments && item.comments.length > 0 ? item.comments.map(c => `
+        <div class="comment-item" style="padding:8px 0; border-bottom:1px solid #f9f9f9;">
+            <div style="font-size:11px; font-weight:bold; color:#555;">${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
+            <div style="font-size:12px; color:#333; margin-top:2px;">${c.comment}</div>
+        </div>`).join('') : "<div style='font-size:11px; color:#999; text-align:center; padding:15px;'>등록된 후기가 없습니다.</div>";
 
     const contentHtml = `
         <div class="custom-info-window">
@@ -120,6 +118,7 @@ function attachInfoWindow(marker, item) {
     });
 }
 
+// [5] 부가 기능들
 function setRatingUI(id, score) {
     const stars = document.querySelectorAll(`#star-wrap-${id} .star-btn`);
     const input = document.getElementById(`rate-val-${id}`);
@@ -149,60 +148,40 @@ function setupEvents() {
     });
 }
 
-// [수정] 수다방(전체 화면) 열기
+// [6] 수다방 게시판 엔진
 function openBoard() {
-    console.log("🚀 수다방 게시판 모드 진입");
     const boardPage = document.getElementById('board-page');
     const menu = document.getElementById('floating-menu');
-    
     if (boardPage) {
         boardPage.classList.remove('hidden');
-        if (menu) menu.style.display = 'none'; // 게시판에선 메뉴 숨김
-        fetchBoard(); // 데이터 로드
+        if (menu) menu.style.display = 'none';
+        fetchBoard();
     }
 }
 
-// [수정] 지도로 돌아가기
 function closeBoard() {
     const boardPage = document.getElementById('board-page');
     const menu = document.getElementById('floating-menu');
-    
     if (boardPage) {
         boardPage.classList.add('hidden');
-        if (menu) menu.style.display = 'flex'; // 메뉴 다시 표시
+        if (menu) menu.style.display = 'flex';
     }
 }
 
-// [진단용] 게시글 조회 함수
 async function fetchBoard() {
-    console.log("🚀 1. fetchBoard 엔진 가동: ", SCRIPT_URL);
     try {
         const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
-        console.log("🚀 2. 서버 응답 코드:", res.status); 
-        
-        // JSON으로 바로 파싱하지 말고 텍스트로 먼저 받아봅니다.
-        const rawText = await res.text();
-        console.log("🚀 3. 서버에서 온 날것의 데이터:", rawText);
-
-        if (rawText.startsWith("<!DOCTYPE")) {
-            console.error("❌ 오류: 서버가 데이터 대신 구글 로그인 페이지(HTML)를 보냈습니다. 권한 설정 재확인 필요!");
-            return;
-        }
-
-        boardData = JSON.parse(rawText);
-        console.log("🚀 4. 파싱 성공! 게시글 개수:", boardData.length);
+        boardData = await res.json();
         renderBoard();
-    } catch (err) {
-        console.error("❌ 5. fetchBoard 과정에서 치명적 에러 발생:", err);
-    }
+    } catch (e) { console.error("데이터 로드 실패"); }
 }
 
-// [3] 목록으로 돌아올 때 글쓰기 버튼 다시 보이기 (보정)
 function renderBoard() {
-    const list = document.getElementById('board-content');
-    document.getElementById('write-btn').style.display = 'block'; // 버튼 부활
+    const content = document.getElementById('board-content');
+    const writeBtn = document.getElementById('write-btn');
+    if(writeBtn) writeBtn.style.display = 'block';
     
-    list.innerHTML = `
+    content.innerHTML = `
         <div id="post-list">
             ${boardData.map(p => `
                 <div class="post-card" onclick="viewPostDetail('${p.id}')" style="cursor:pointer; border-bottom:1px solid #eee; padding:20px 0;">
@@ -211,43 +190,34 @@ function renderBoard() {
                     <div style="color:#FFD400; font-size:12px; font-weight:bold;">💬 댓글 ${p.comments ? p.comments.length : 0}</div>
                 </div>
             `).join('')}
-        </div>
-    `;
+        </div>`;
 }
 
-// [1] 글쓰기 폼 표시 함수 (ReferenceError 해결)
 function showWriteForm() {
-    console.log("🚀 글쓰기 모드 전환");
     const boardContent = document.getElementById('board-content');
-    
-    // 게시글 목록 대신 글쓰기 양식을 화면에 그립니다.
     boardContent.innerHTML = `
         <div class="write-form" style="animation: fadeIn 0.3s;">
             <button onclick="renderBoard()" class="back-btn" style="margin-bottom:15px;">← 목록으로 돌아가기</button>
             <h4 style="margin-bottom:15px;">새로운 수다 남기기 ✍️</h4>
-            <input type="text" id="b-title" placeholder="제목을 입력하세요" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
-            <textarea id="b-content" placeholder="내용을 입력하세요" style="width:100%; height:150px; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box; resize:none;"></textarea>
-            <input type="text" id="b-link" placeholder="관련 링크 주소 (선택)" style="width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
+            <input type="text" id="b-title" placeholder="제목" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
+            <textarea id="b-content" placeholder="내용" style="width:100%; height:150px; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box; resize:none;"></textarea>
+            <input type="text" id="b-link" placeholder="링크 (선택)" style="width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
             <div style="margin-bottom:15px;">
                 <label style="font-size:12px; font-weight:bold; color:#666;">📸 사진 첨부</label>
                 <input type="file" id="b-file" accept="image/*" style="width:100%; margin-top:5px;">
             </div>
             <button onclick="submitPost()" class="btn-save" style="width:100%; background:#FFD400; font-size:18px; padding:15px;">등록하기</button>
-        </div>
-    `;
-    // 글쓰기 창이 열리면 플로팅 글쓰기 버튼은 숨깁니다.
+        </div>`;
     document.getElementById('write-btn').style.display = 'none';
 }
 
-// [보정] 게시글 상세 보기 (이미지 경로 및 화면 유지 로직 강화)
 function viewPostDetail(postId) {
-    console.log("🚀 상세 보기 호출 ID:", postId);
     const post = boardData.find(p => String(p.id) === String(postId));
     if (!post) return;
 
     const boardContent = document.getElementById('board-content');
     
-    // 구글 드라이브 이미지 주소가 'file/d/ID/view' 형태일 경우를 대비해 확실히 치환합니다.
+    // 이미지 주소 보정 로직 (uc?id= 형태로 강제 변환)
     let imgUrl = post.imageUrl || "";
     if (imgUrl.includes("drive.google.com")) {
         const fileId = imgUrl.match(/[-\w]{25,}/);
@@ -261,31 +231,22 @@ function viewPostDetail(postId) {
             <div style="font-size:12px; color:#999; margin-bottom:20px;">
                 작성자: ${post.author} | ${new Date(post.date).toLocaleString()}
             </div>
-            
-            ${imgUrl ? `<img src="${imgUrl}" style="width:100%; border-radius:15px; margin-bottom:20px; border:1px solid #eee;" onerror="this.style.display='none'; console.log('이미지 로드 실패');">` : ""}
-            
+            ${imgUrl ? `<img src="${imgUrl}" style="width:100%; border-radius:15px; margin-bottom:20px; border:1px solid #eee;" onerror="this.style.display='none';">` : ""}
             <p style="font-size:15px; line-height:1.7; white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
-            
-            ${post.link ? `<a href="${post.link}" target="_blank" style="display:block; padding:12px; background:#f0f7ff; color:#007bff; text-decoration:none; border-radius:10px; margin-bottom:20px; font-size:13px; font-weight:bold;">🔗 관련 링크 바로가기</a>` : ""}
-
+            ${post.link ? `<a href="${post.link}" target="_blank" style="display:block; padding:12px; background:#f0f7ff; color:#007bff; text-decoration:none; border-radius:10px; margin-bottom:20px; font-size:13px; font-weight:bold;">🔗 링크 바로가기</a>` : ""}
             <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
-                <h5 style="margin-bottom:15px;">댓글 (${post.comments ? post.comments.length : 0})</h5>
+                <h5>댓글 (${post.comments ? post.comments.length : 0})</h5>
                 <div id="b-comment-list">
-                    ${post.comments && post.comments.length > 0 ? post.comments.map(c => `
-                        <div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:8px; font-size:13px;">
-                            <b style="color:#333;">${c.user}</b>: ${c.text}
-                        </div>
-                    `).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
+                    ${post.comments && post.comments.length > 0 ? post.comments.map(c => `<div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:8px; font-size:13px;"><b>${c.user}</b>: ${c.text}</div>`).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
                 </div>
                 <div style="display:flex; gap:8px; margin-top:20px;">
-                    <input type="text" id="cmt-in-${post.id}" placeholder="댓글을 입력하세요" style="flex:1; padding:10px; border:1px solid #ddd; border-radius:10px; font-size:13px;">
+                    <input type="text" id="cmt-in-${post.id}" placeholder="댓글 입력" style="flex:1; padding:10px; border:1px solid #ddd; border-radius:10px;">
                     <button onclick="submitBoardComment('${post.id}')" style="background:#FFD400; border:none; border-radius:10px; padding:0 15px; font-weight:bold; cursor:pointer;">등록</button>
                 </div>
             </div>
-        </div>
-    `;
+        </div>`;
     document.getElementById('write-btn').style.display = 'none';
-    window.scrollTo(0, 0); // 상세 보기 시 최상단으로 스크롤
+    window.scrollTo(0, 0);
 }
 
 async function submitPost() {
@@ -295,55 +256,32 @@ async function submitPost() {
     const fileEl = document.getElementById('b-file');
     const nick = localStorage.getItem('gj-nick') || "익명";
 
-    let imgBase64 = "";
+    const sendData = async (imgBase64) => {
+        const q = new URLSearchParams({ type: "add_post", user: nick, title: title, content: content, link: link });
+        await fetch(`${SCRIPT_URL}?${q.toString()}`, { method: 'POST', body: JSON.stringify({ image_data: imgBase64 }) });
+        alert("등록 완료!"); fetchBoard();
+    };
+
     if (fileEl.files.length > 0) {
         const reader = new FileReader();
+        reader.onload = () => sendData(reader.result);
         reader.readAsDataURL(fileEl.files[0]);
-        reader.onload = async () => {
-            imgBase64 = reader.result;
-            const q = new URLSearchParams({ type: "add_post", user: nick, title: title, content: content, link: link });
-            await fetch(`${SCRIPT_URL}?${q.toString()}`, { method: 'POST', body: JSON.stringify({ image_data: imgBase64 }) });
-            alert("게시글 등록 완료!"); fetchBoard();
-        };
     } else {
-        const q = new URLSearchParams({ type: "add_post", user: nick, title: title, content: content, link: link });
-        await fetch(`${SCRIPT_URL}?${q.toString()}`, { method: 'POST', body: JSON.stringify({ image_data: "" }) });
-        alert("게시글 등록 완료!"); fetchBoard();
+        sendData("");
     }
 }
 
-// [수정] 댓글 등록 후 해당 게시글 상세 화면을 다시 띄우는 로직
 async function submitBoardComment(postId) {
     const nick = localStorage.getItem('gj-nick') || "익명";
-    const msgInput = document.getElementById(`cmt-in-${postId}`);
-    const msg = msgInput.value;
-    
-    if (!msg) return alert("댓글 내용을 입력해주세요!");
-
-    const q = new URLSearchParams({ 
-        type: "add_board_comment", 
-        post_id: postId, 
-        user: nick, 
-        comment: msg 
-    });
-
-    try {
-        // 댓글 저장 전송
-        await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
-        
-        alert("댓글이 등록되었습니다!");
-        
-        // 데이터 최신화 후 상세 페이지 재호출
-        const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
-        const rawText = await res.text();
-        boardData = JSON.parse(rawText);
-        
-        // [핵심] 목록으로 가지 않고 상세 페이지를 다시 그려줍니다.
-        viewPostDetail(postId);
-        
-    } catch (err) {
-        console.error("댓글 등록 중 오류:", err);
-    }
+    const msg = document.getElementById(`cmt-in-${postId}`).value;
+    if (!msg) return alert("내용 입력!");
+    const q = new URLSearchParams({ type: "add_board_comment", post_id: postId, user: nick, comment: msg });
+    await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
+    alert("댓글 등록!");
+    // 데이터 갱신 후 상세 페이지 재출력
+    const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+    boardData = await res.json();
+    viewPostDetail(postId);
 }
 
 async function submitReport() {
