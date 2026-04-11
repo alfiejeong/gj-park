@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzBlMWZNB6GS_pr8lu5pXRU4NImKZ1vknba7DqwOKiow12JCcLZcUfazFRtsI2KsgQu/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxOgal8wqlZr1qiBvUiKosbTxaoHW-oJ3zuFYDKUz1Hw_y8zjvD8ykkgbSJ_PN3kj3g/exec";
 
 // [1] 데이터 수급
 function preFetchData() {
@@ -211,18 +211,16 @@ function showWriteForm() {
     document.getElementById('write-btn').style.display = 'none';
 }
 
+// [중요] 게시글 상세 보기 함수 보정
 function viewPostDetail(postId) {
     const post = boardData.find(p => String(p.id) === String(postId));
     if (!post) return;
 
     const boardContent = document.getElementById('board-content');
     
-    // 이미지 주소 보정 로직 (uc?id= 형태로 강제 변환)
+    // 서버(GS)에서 이미 uc?id= 형태의 완성된 주소를 주므로, 
+    // 정규표현식으로 다시 가공하지 않고 그대로 사용하거나 안전하게 필터링만 합니다.
     let imgUrl = post.imageUrl || "";
-    if (imgUrl.includes("drive.google.com")) {
-        const fileId = imgUrl.match(/[-\w]{25,}/);
-        if (fileId) imgUrl = `https://docs.google.com/uc?export=view&id=${fileId[0]}`;
-    }
 
     boardContent.innerHTML = `
         <div class="post-detail" style="animation: fadeIn 0.3s;">
@@ -231,9 +229,13 @@ function viewPostDetail(postId) {
             <div style="font-size:12px; color:#999; margin-bottom:20px;">
                 작성자: ${post.author} | ${new Date(post.date).toLocaleString()}
             </div>
-            ${imgUrl ? `<img src="${imgUrl}" style="width:100%; border-radius:15px; margin-bottom:20px; border:1px solid #eee;" onerror="this.style.display='none';">` : ""}
+            
+            ${imgUrl ? `<img src="${imgUrl}" style="width:100%; border-radius:15px; margin-bottom:20px; border:1px solid #eee;" onerror="console.log('이미지 로드 실패'); this.style.display='none';">` : ""}
+            
             <p style="font-size:15px; line-height:1.7; white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
+            
             ${post.link ? `<a href="${post.link}" target="_blank" style="display:block; padding:12px; background:#f0f7ff; color:#007bff; text-decoration:none; border-radius:10px; margin-bottom:20px; font-size:13px; font-weight:bold;">🔗 링크 바로가기</a>` : ""}
+            
             <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
                 <h5>댓글 (${post.comments ? post.comments.length : 0})</h5>
                 <div id="b-comment-list">
