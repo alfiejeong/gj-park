@@ -239,28 +239,34 @@ function showWriteForm() {
     document.getElementById('write-btn').style.display = 'none';
 }
 
-// [2] 게시글 상세 보기 함수 (ReferenceError 해결)
+// [보정] 게시글 상세 보기 (이미지 경로 및 화면 유지 로직 강화)
 function viewPostDetail(postId) {
-    console.log("🚀 게시글 상세 보기 ID:", postId);
+    console.log("🚀 상세 보기 호출 ID:", postId);
     const post = boardData.find(p => String(p.id) === String(postId));
-    if (!post) return alert("게시글을 찾을 수 없습니다.");
+    if (!post) return;
 
     const boardContent = document.getElementById('board-content');
     
-    // 상세 페이지 구성
+    // 구글 드라이브 이미지 주소가 'file/d/ID/view' 형태일 경우를 대비해 확실히 치환합니다.
+    let imgUrl = post.imageUrl || "";
+    if (imgUrl.includes("drive.google.com")) {
+        const fileId = imgUrl.match(/[-\w]{25,}/);
+        if (fileId) imgUrl = `https://docs.google.com/uc?export=view&id=${fileId[0]}`;
+    }
+
     boardContent.innerHTML = `
         <div class="post-detail" style="animation: fadeIn 0.3s;">
             <button onclick="renderBoard()" class="back-btn" style="margin-bottom:15px;">← 목록으로</button>
-            <h2 style="margin:0 0 10px 0;">${post.title}</h2>
-            <div style="font-size:13px; color:#999; margin-bottom:20px;">
+            <h2 style="margin:0 0 10px 0; font-size:22px;">${post.title}</h2>
+            <div style="font-size:12px; color:#999; margin-bottom:20px;">
                 작성자: ${post.author} | ${new Date(post.date).toLocaleString()}
             </div>
             
-            ${post.imageUrl ? `<img src="${post.imageUrl}" style="width:100%; border-radius:15px; margin-bottom:20px;">` : ""}
+            ${imgUrl ? `<img src="${imgUrl}" style="width:100%; border-radius:15px; margin-bottom:20px; border:1px solid #eee;" onerror="this.style.display='none'; console.log('이미지 로드 실패');">` : ""}
             
             <p style="font-size:15px; line-height:1.7; white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
             
-            ${post.link ? `<a href="${post.link}" target="_blank" style="display:block; padding:12px; background:#f0f7ff; color:#007bff; text-decoration:none; border-radius:10px; margin-bottom:20px; font-weight:bold;">🔗 관련 링크 바로가기</a>` : ""}
+            ${post.link ? `<a href="${post.link}" target="_blank" style="display:block; padding:12px; background:#f0f7ff; color:#007bff; text-decoration:none; border-radius:10px; margin-bottom:20px; font-size:13px; font-weight:bold;">🔗 관련 링크 바로가기</a>` : ""}
 
             <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
                 <h5 style="margin-bottom:15px;">댓글 (${post.comments ? post.comments.length : 0})</h5>
@@ -272,13 +278,14 @@ function viewPostDetail(postId) {
                     `).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
                 </div>
                 <div style="display:flex; gap:8px; margin-top:20px;">
-                    <input type="text" id="cmt-in-${post.id}" placeholder="댓글을 입력하세요" style="flex:1; padding:10px; border:1px solid #ddd; border-radius:10px;">
+                    <input type="text" id="cmt-in-${post.id}" placeholder="댓글을 입력하세요" style="flex:1; padding:10px; border:1px solid #ddd; border-radius:10px; font-size:13px;">
                     <button onclick="submitBoardComment('${post.id}')" style="background:#FFD400; border:none; border-radius:10px; padding:0 15px; font-weight:bold; cursor:pointer;">등록</button>
                 </div>
             </div>
         </div>
     `;
     document.getElementById('write-btn').style.display = 'none';
+    window.scrollTo(0, 0); // 상세 보기 시 최상단으로 스크롤
 }
 
 async function submitPost() {
@@ -305,12 +312,38 @@ async function submitPost() {
     }
 }
 
+// [수정] 댓글 등록 후 해당 게시글 상세 화면을 다시 띄우는 로직
 async function submitBoardComment(postId) {
     const nick = localStorage.getItem('gj-nick') || "익명";
-    const msg = document.getElementById(`cmt-in-${postId}`).value;
-    const q = new URLSearchParams({ type: "add_board_comment", post_id: postId, user: nick, comment: msg });
-    await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
-    alert("댓글 완료!"); fetchBoard();
+    const msgInput = document.getElementById(`cmt-in-${postId}`);
+    const msg = msgInput.value;
+    
+    if (!msg) return alert("댓글 내용을 입력해주세요!");
+
+    const q = new URLSearchParams({ 
+        type: "add_board_comment", 
+        post_id: postId, 
+        user: nick, 
+        comment: msg 
+    });
+
+    try {
+        // 댓글 저장 전송
+        await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
+        
+        alert("댓글이 등록되었습니다!");
+        
+        // 데이터 최신화 후 상세 페이지 재호출
+        const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+        const rawText = await res.text();
+        boardData = JSON.parse(rawText);
+        
+        // [핵심] 목록으로 가지 않고 상세 페이지를 다시 그려줍니다.
+        viewPostDetail(postId);
+        
+    } catch (err) {
+        console.error("댓글 등록 중 오류:", err);
+    }
 }
 
 async function submitReport() {
