@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbznkx9ZVWCxKuMwfDRn7JPORhlUE8D_oAXIZg9_mdLYf8lympMPyBKaZPAogepxGykk/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwAOtNG9z0YrfWiFjkZdS40R8wC9ZCXUS76bW8hYNjKF8vVm2UjCW07BHx4radiXnRB/exec";
 
 // [보정] 수다방 데이터까지 포함한 통합 수급 로직
 // [수정] CORS 에러를 최소화하는 데이터 수급 로직
@@ -308,14 +308,28 @@ async function submitPost() {
     saveBtn.disabled = true;
 
     const sendData = async (imgBase64) => {
-        // [중요] 모든 데이터를 하나의 JSON 객체로 묶습니다.
-        const payload = {
-            user: nick,
-            title: title,
-            content: content,
-            link: link,
-            image_data: imgBase64
-        };
+       // 게시글 저장 함수 내 payload 부분 수정
+const payload = {
+    user: nick,
+    title: title,
+    content: content,
+    link: link,
+    // [중요] 반드시 image_data 라는 이름을 사용해야 서버가 알아봅니다.
+    image_data: imgBase64 || "" 
+};
+
+// 서버로 전송 (이미지 포함 시 POST 방식 사용)
+fetch(SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+})
+.then(res => res.json())
+.then(data => {
+    if(data.res === "ok") {
+        alert("게시글이 등록되었습니다!");
+        refreshBoardData(); // 목록 새로고침
+    }
+});
 
         try {
             // [보정] URL 파라미터로 type=add_post를 명시해줍니다.
