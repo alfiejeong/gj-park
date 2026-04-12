@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwAOtNG9z0YrfWiFjkZdS40R8wC9ZCXUS76bW8hYNjKF8vVm2UjCW07BHx4radiXnRB/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxLrLuYPMI6pAtMw5FE7cHRxutbeuF5Z1R6cr6BnaLQyaMVvWIU5QLusbCKmWHLx4KY/exec";
 
 // [보정] 수다방 데이터까지 포함한 통합 수급 로직
 // [수정] CORS 에러를 최소화하는 데이터 수급 로직
@@ -293,6 +293,7 @@ function viewPostDetail(postId) {
     window.scrollTo(0, 0);
 }
 
+// [보정] 사진 데이터를 서버로 확실히 밀어넣는 전송 로직
 async function submitPost() {
     const title = document.getElementById('b-title').value;
     const content = document.getElementById('b-content').value;
@@ -302,61 +303,33 @@ async function submitPost() {
 
     if (!title || !content) return alert("제목과 내용을 입력해주세요!");
 
-    // 저장 중 버튼 비활성화
     const saveBtn = document.querySelector('.btn-save');
-    saveBtn.innerText = "저장 중... (창을 닫지 마세요)";
+    saveBtn.innerText = "저장 중...";
     saveBtn.disabled = true;
 
     const sendData = async (imgBase64) => {
-       // 게시글 저장 함수 내 payload 부분 수정
-const payload = {
-    user: nick,
-    title: title,
-    content: content,
-    link: link,
-    // [중요] 반드시 image_data 라는 이름을 사용해야 서버가 알아봅니다.
-    image_data: imgBase64 || "" 
-};
-
-// 서버로 전송 (이미지 포함 시 POST 방식 사용)
-fetch(SCRIPT_URL, {
-    method: 'POST',
-    body: JSON.stringify(payload)
-})
-.then(res => res.json())
-.then(data => {
-    if(data.res === "ok") {
-        alert("게시글이 등록되었습니다!");
-        refreshBoardData(); // 목록 새로고침
-    }
-});
+        const payload = {
+            user: nick,
+            title: title,
+            content: content,
+            link: link,
+            image_data: imgBase64 // 서버(GS)의 postData.image_data와 이름이 같아야 함
+        };
 
         try {
-            // [보정] URL 파라미터로 type=add_post를 명시해줍니다.
+            // [중요] mode: 'no-cors'를 절대 쓰지 마십시오.
             const response = await fetch(`${SCRIPT_URL}?type=add_post`, {
                 method: 'POST',
                 body: JSON.stringify(payload)
             });
             
-            const result = await response.json();
-            
-            if (result.res === "ok") {
-                alert("성공적으로 등록되었습니다!");
-                // [핵심] 지도로 가지 않고, 수다물 목록을 다시 불러오고 보여줍니다.
-                const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
-                boardData = await res.json();
-                renderBoard(); 
-            } else {
-                alert("서버 저장 실패: " + result.msg);
-            }
+            // 전송 후 성공 여부와 상관없이 목록 갱신 (구글 응답 특성 고려)
+            alert("게시글 등록 프로세스가 완료되었습니다.");
+            location.reload(); 
         } catch (error) {
-            console.error("전송 에러:", error);
-            // 구글 특유의 리다이렉트 에러가 나더라도 데이터가 들어가는 경우가 많으므로 확인 절차를 거칩니다.
-            alert("전송 과정에 응답 지연이 있습니다. 목록을 갱신합니다.");
-            fetchBoard(); 
-        } finally {
-            saveBtn.innerText = "등록하기";
-            saveBtn.disabled = false;
+            console.error("전송 중 오류 발생:", error);
+            alert("전송 중 오류가 발생했지만 데이터가 기록되었을 수 있습니다. 목록을 확인하세요.");
+            location.reload();
         }
     };
 
