@@ -293,51 +293,33 @@ function viewPostDetail(postId) {
     window.scrollTo(0, 0);
 }
 
-// [보정] 사진 데이터를 서버로 확실히 밀어넣는 전송 로직
 async function submitPost() {
+    console.log("🚀 1. submitPost 함수 가동됨!"); // 이게 찍히는지 확인
+
     const title = document.getElementById('b-title').value;
     const content = document.getElementById('b-content').value;
-    const link = document.getElementById('b-link').value;
     const fileEl = document.getElementById('b-file');
-    const nick = localStorage.getItem('gj-nick') || "익명";
+
+    console.log("🚀 2. 입력값 확인:", title, content); // 값이 제대로 들어오는지 확인
 
     if (!title || !content) return alert("제목과 내용을 입력해주세요!");
 
-    const saveBtn = document.querySelector('.btn-save');
-    saveBtn.innerText = "저장 중...";
-    saveBtn.disabled = true;
-
     const sendData = async (imgBase64) => {
-        const payload = {
-            user: nick,
-            title: title,
-            content: content,
-            link: link,
-            image_data: imgBase64 // 서버(GS)의 postData.image_data와 이름이 같아야 함
-        };
-
-        try {
-            // [중요] mode: 'no-cors'를 절대 쓰지 마십시오.
-            const response = await fetch(`${SCRIPT_URL}?type=add_post`, {
-                method: 'POST',
-                body: JSON.stringify(payload)
-            });
-            
-            // 전송 후 성공 여부와 상관없이 목록 갱신 (구글 응답 특성 고려)
-            alert("게시글 등록 프로세스가 완료되었습니다.");
-            location.reload(); 
-        } catch (error) {
-            console.error("전송 중 오류 발생:", error);
-            alert("전송 중 오류가 발생했지만 데이터가 기록되었을 수 있습니다. 목록을 확인하세요.");
-            location.reload();
-        }
+        console.log("🚀 4. 서버로 전송 시도 중..."); // 이게 안 뜨면 3번에서 죽은 것
+        // ... 기존 fetch 코드 ...
     };
 
     if (fileEl.files.length > 0) {
+        console.log("🚀 3. 사진 파일 발견, 변환 시작");
         const reader = new FileReader();
-        reader.onload = () => sendData(reader.result);
+        reader.onload = () => {
+            console.log("🚀 3-1. 사진 변환 완료!");
+            sendData(reader.result);
+        };
+        reader.onerror = (e) => console.error("❌ 사진 변환 에러:", e);
         reader.readAsDataURL(fileEl.files[0]);
     } else {
+        console.log("🚀 3. 사진 없음, 바로 전송");
         sendData("");
     }
 }
