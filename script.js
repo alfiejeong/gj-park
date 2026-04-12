@@ -293,36 +293,104 @@ function viewPostDetail(postId) {
     window.scrollTo(0, 0);
 }
 
-async function submitPost() {
-    console.log("🚀 1. submitPost 함수 가동됨!"); // 이게 찍히는지 확인
+/**
+ * [최종본] 게시글 및 사진 데이터 서버 송고 함수
+ * 보정내역: 전역 스코프 확보, 사진 데이터 직렬화, 전송 후 수다방 유지 로직 통합
+ */
+window.submitPost = async function() {
+    console.log("🚀 [전송 시작] 데이터 송고 절차를 개시합니다.");
 
-    const title = document.getElementById('b-title').value;
-    const content = document.getElementById('b-content').value;
+    // HTML 요소 확보
+    const titleEl = document.getElementById('b-title');
+    const contentEl = document.getElementById('b-content');
+    const linkEl = document.getElementById('b-link');
     const fileEl = document.getElementById('b-file');
+    const nick = localStorage.getItem('gj-nick') || "익명";
 
-    console.log("🚀 2. 입력값 확인:", title, content); // 값이 제대로 들어오는지 확인
+    // 1단계: 필수 요소 및 값 체크
+    if (!titleEl || !contentEl || !fileEl) {
+        console.error("❌ [오류] 화면 요소를 찾을 수 없습니다. HTML ID(b-title, b-content 등)를 확인하십시오.");
+        return;
+    }
 
-    if (!title || !content) return alert("제목과 내용을 입력해주세요!");
+    const title = titleEl.value;
+    const content = contentEl.value;
+    const link = linkEl.value;
 
+    if (!title || !content) {
+        alert("제목과 내용을 모두 입력해야 합니다.");
+        return;
+    }
+
+    // 버튼 잠금 (중복 클릭 방지 및 상태 표시)
+    const saveBtn = document.querySelector('.btn-save');
+    if (saveBtn) {
+        saveBtn.innerText = "데이터 전송 중...";
+        saveBtn.disabled = true;
+    }
+
+    // 2단계: 서버 전송 내부 로직 (fetch 포함)
     const sendData = async (imgBase64) => {
-        console.log("🚀 4. 서버로 전송 시도 중..."); // 이게 안 뜨면 3번에서 죽은 것
-        // ... 기존 fetch 코드 ...
+        console.log("🚀 [데이터 검수] 사진 변환 용량:", imgBase64.length, "자");
+        
+        try {
+            // 구글 앱스 스크립트 특성상 type 파라미터는 URL에 붙이는 것이 경로 탐색에 유리합니다.
+            const response = await fetch(`${SCRIPT_URL}?type=add_post`, {
+                method: 'POST',
+                // redirect: 'follow'는 구글 서버의 302 응답을 추적하여 최종 목적지에 도달하게 하는 필수 설정입니다.
+                redirect: 'follow',
+                body: JSON.stringify({
+                    user: nick,
+                    title: title,
+                    content: content,
+                    link: link,
+                    image_data: imgBase64 // 서버(GS)의 postData.image_data와 키값을 일치시킴
+                })
+            });
+
+            const result = await response.json();
+            console.log("✅ [서버 응답 결과]", result);
+
+            if (result.res === "ok") {
+                alert("성공적으로 등록되었습니다!");
+                // 지도로 튕기지 않고 수다방 목록을 즉시 새로고침하여 보여줍니다.
+                const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+                boardData = await refreshRes.json();
+                renderBoard(); 
+            } else {
+                alert("서버 기록 오류: " + result.msg);
+            }
+        } catch (error) {
+            console.error("❌ [통신 실패]", error);
+            // 구글의 보안 정책(CORS) 특성상 에러가 나더라도 실제 데이터는 기록되었을 수 있으므로 1.5초 후 강제 갱신합니다.
+            setTimeout(() => {
+                alert("응답 확인 중 지연이 발생했습니다. 목록을 확인하십시오.");
+                fetchBoard();
+            }, 1500);
+        } finally {
+            // 버튼 복구
+            if (saveBtn) {
+                saveBtn.innerText = "등록하기";
+                saveBtn.disabled = false;
+            }
+        }
     };
 
+    // 3단계: 사진 존재 여부에 따른 분기 처리
     if (fileEl.files.length > 0) {
-        console.log("🚀 3. 사진 파일 발견, 변환 시작");
+        console.log("🚀 [사진 처리] 파일을 디지털 데이터(Base64)로 변환합니다.");
         const reader = new FileReader();
-        reader.onload = () => {
-            console.log("🚀 3-1. 사진 변환 완료!");
-            sendData(reader.result);
+        reader.onload = () => sendData(reader.result);
+        reader.onerror = (e) => {
+            console.error("❌ [파일 읽기 에러]", e);
+            alert("사진 파일을 읽는 데 실패했습니다.");
         };
-        reader.onerror = (e) => console.error("❌ 사진 변환 에러:", e);
         reader.readAsDataURL(fileEl.files[0]);
     } else {
-        console.log("🚀 3. 사진 없음, 바로 전송");
+        console.log("🚀 [텍스트 처리] 사진 없이 전송을 시작합니다.");
         sendData("");
     }
-}
+};
 
 async function submitBoardComment(postId) {
     const nick = localStorage.getItem('gj-nick') || "익명";
