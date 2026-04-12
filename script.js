@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyOiW_s4J14qu6gBWS7VTL_zsYZvAB3-gc5OpSZQJbgRvMMfQHrt0uMBIzkp4jq7NEA/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx5hT2ovKPkyo1e8RdZyGWmvSkTOfVTy-5US0ks_EZmIzhD469P1ujQm_C-CTAZEstM/exec";
 
 // [보정] 수다방 데이터까지 포함한 통합 수급 로직
 // [수정] CORS 에러를 최소화하는 데이터 수급 로직
@@ -334,17 +334,17 @@ window.submitPost = async function() {
         console.log("🚀 [데이터 검수] 사진 변환 용량:", imgBase64.length, "자");
         
         try {
-            // 구글 앱스 스크립트 특성상 type 파라미터는 URL에 붙이는 것이 경로 탐색에 유리합니다.
             const response = await fetch(`${SCRIPT_URL}?type=add_post`, {
                 method: 'POST',
-                // redirect: 'follow'는 구글 서버의 302 응답을 추적하여 최종 목적지에 도달하게 하는 필수 설정입니다.
+                // [보정] Content-Type을 명시하여 데이터 파손 방지
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
                 redirect: 'follow',
                 body: JSON.stringify({
                     user: nick,
                     title: title,
                     content: content,
                     link: link,
-                    image_data: imgBase64 // 서버(GS)의 postData.image_data와 키값을 일치시킴
+                    image_data: imgBase64 
                 })
             });
 
