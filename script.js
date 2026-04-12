@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyEEwx7bdNI-1rjXXu4qa3fXD8_QNaJvd_Q0EUAYNP_oczYjeVLQVhgJ3U-r6vAVv9m/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx10LYVgd6CwPC4Ot3hR8I_VFanUCLN7QfVhUZ6AzozHk2AHkYt7VrAaiISjCrErgAg/exec";
 
 // [보정] 수다방 데이터까지 포함한 통합 수급 로직
 // [수정] CORS 에러를 최소화하는 데이터 수급 로직
