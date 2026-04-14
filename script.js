@@ -16,43 +16,38 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbytZVqg7VU49qfshjf1g
 
 // [보정] 수다방 데이터까지 포함한 통합 수급 로직
 // [수정] CORS 에러를 최소화하는 데이터 수급 로직
+// [수정] 모든 데이터를 동시에 병렬로 가져오도록 개선 (로딩 속도 최적화)
 async function preFetchData() {
-    console.log("🚀 강제 데이터 동기화 시작...");
-    const urls = [
-        `${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`,
-        `${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`,
-        `${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`
-    ];
+    console.log("🚀 데이터 병렬 동기화 시작...");
     
+    // 각각의 요청을 프로미스로 생성
+    const fetchSheet = fetch(`${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`).then(res => res.json());
+    const fetchSeoul = fetch(`${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`).then(res => res.json());
+    const fetchBoard = fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`).then(res => res.json());
+
     try {
-        // Promise.all 대신 하나씩 순차적으로 가져와 부하를 줄여봅니다.
-        for (let i = 0; i < urls.length; i++) {
-            try {
-                const response = await fetch(urls[i], {
-                    method: 'GET',
-                    mode: 'cors', // 명시적으로 cors 모드 설정
-                    credentials: 'omit' // 쿠키 전송 제외로 보안 검사 완화
-                });
-                
-                const data = await response.json();
-                
-                if (i === 0 || i === 1) {
-                    if (Array.isArray(data)) preloadedData.push(...data);
-                } else {
-                    boardData = Array.isArray(data) ? data : [];
-                }
-                console.log(`✅ ${i+1}번 데이터 로드 성공`);
-            } catch (err) {
-                console.error(`${i+1}번 데이터 로드 실패:`, err);
+        // 모든 요청을 동시에 실행하고 결과를 기다림 (가장 빠른 데이터부터 처리 가능)
+        const results = await Promise.allSettled([fetchSheet, fetchSeoul, fetchBoard]);
+
+        // 1 & 2: 지도 데이터 처리
+        if (results[0].status === 'fulfilled') preloadedData.push(...results[0].value);
+        if (results[1].status === 'fulfilled') preloadedData.push(...results[1].value);
+        
+        // 3: 수다방 데이터 처리
+        if (results[2].status === 'fulfilled') {
+            boardData = results[2].value;
+            // 만약 이미 수다방 화면을 보고 있다면 즉시 렌더링
+            if (!document.getElementById('board-page').classList.contains('hidden')) {
+                renderBoard();
             }
         }
-        
+
         isDataLoaded = true;
-        console.log("🏁 최종 수급 완료. 지도:", preloadedData.length, "/ 수다방:", boardData.length);
+        console.log("🏁 최종 수급 완료. 수다방 데이터 우선 확보됨");
         if (map) renderAllMarkers();
         
     } catch (e) {
-        console.error("통합 수급 프로세스 에러:", e);
+        console.error("통합 수급 프로세스 치명적 에러:", e);
     }
 }
 
@@ -210,6 +205,22 @@ function renderBoard() {
     const content = document.getElementById('board-content');
     const writeBtn = document.getElementById('write-btn');
     if(writeBtn) writeBtn.style.display = 'block';
+
+    // 데이터가 아직 없을 경우 로딩 표시
+    if (boardData.length === 0 && !isDataLoaded) {
+        content.innerHTML = `
+            <div style="text-align:center; padding:50px 0;">
+                <div class="loader" style="margin:0 auto 20px;"></div>
+                <p style="font-weight:bold; color:#666;">수다글을 가져오고 있습니다...</p>
+            </div>`;
+        return;
+    }
+
+    // 데이터가 진짜로 없을 경우
+    if (boardData.length === 0 && isDataLoaded) {
+        content.innerHTML = `<div style="text-align:center; padding:50px 0; color:#999;">첫 글의 주인공이 되어보세요!</div>`;
+        return;
+    }
     
     content.innerHTML = `
         <div id="post-list">
