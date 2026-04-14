@@ -115,6 +115,49 @@ function attachInfoWindow(marker, item) {
     });
 }
 
+// [보정] 별점 UI: 클릭 시 노란색으로 즉각 변경되도록 스타일 강제 부여
+function setRatingUI(id, score) {
+    const stars = document.querySelectorAll(`#star-wrap-${id} .star-btn`);
+    const input = document.getElementById(`rate-val-${id}`);
+    if(input) input.value = score;
+    
+    stars.forEach((s, i) => {
+        // [수정] CSS 클래스 대신 직접 스타일을 제어하여 확실하게 반응하게 함
+        if (i < score) {
+            s.style.color = "#FFD400"; // 활성 색상
+        } else {
+            s.style.color = "#ddd"; // 비활성 색상
+        }
+    });
+}
+
+// [보정] 후기 등록 함수: 등록 후 지도로 튕기지 않고 상태 유지
+async function sendFeedback(targetName) {
+    const idSafe = targetName.replace(/\s/g, '');
+    const savedNick = localStorage.getItem('gj-nick') || "익명";
+    const msg = document.getElementById(`cmt-msg-${idSafe}`).value;
+    const rate = document.getElementById(`rate-val-${idSafe}`).value;
+    
+    if (!msg) return alert("내용을 입력해주세요!");
+
+    toggleLoading(true, "후기 등록 중...");
+    try {
+        const q = new URLSearchParams({ type: "add_comment", target_id: targetName, user: savedNick, comment: msg, rating: rate });
+        // GET 전송의 안정성을 위해 fetch 호출 형식을 보정함
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        
+        if (result.res === "ok") {
+            alert("후기가 등록되었습니다!");
+            location.reload(); // 지도의 마커 데이터를 갱신하기 위해 지도는 새로고침 유지
+        }
+    } catch (e) {
+        alert("등록 중 통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
+}
+
 // [2번 오류 해결] 수다방 진입 시 즉시 렌더링 보정
 function openBoard() {
     const boardPage = document.getElementById('board-page');
@@ -191,28 +234,30 @@ function toggleLoading(show, msg = "데이터 저장 중...") {
     else modal.classList.add('hidden');
 }
 
+// [수정] 수다방 게시글 등록 함수
 async function submitPost() {
     const title = document.getElementById('b-title').value;
-    const nick = document.getElementById('b-nick').value;
+    const nickValue = document.getElementById('b-nick').value;
     const pw = document.getElementById('b-pw').value;
     const content = document.getElementById('b-content').value;
     const fileEl = document.getElementById('b-file');
 
-    if (!title || !nick || !pw || !content) return alert("모든 항목을 입력하세요!");
+    if (!title || !nickValue || !pw || !content) return alert("모든 항목을 입력하세요!");
 
-    toggleLoading(true);
+    toggleLoading(true, "데이터 저장 중...");
     const send = async (img) => {
         try {
             const res = await fetch(`${SCRIPT_URL}?type=add_post`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ user: nick, pw: pw, title: title, content: content, image_data: img })
+                body: JSON.stringify({ user: nickValue, pw: pw, title: title, content: content, image_data: img })
             });
             const result = await res.json();
             if (result.res === "ok") {
                 alert("등록 성공!");
-                localStorage.setItem('gj-nick', nick);
-                location.reload();
+                localStorage.setItem('gj-nick', nickValue);
+                // [핵심 보정] 리로드 대신 데이터만 갱신하고 수다방 화면 유지
+                await refreshBoardData(); 
             } else { alert("실패: " + result.msg); }
         } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
     };
@@ -220,6 +265,24 @@ async function submitPost() {
     if (fileEl.files.length > 0) {
         const r = new FileReader(); r.onload = () => send(r.result); r.readAsDataURL(fileEl.files[0]);
     } else { send(""); }
+}
+
+// [추가] 게시판 데이터 갱신 및 화면 유지 전용 함수
+async function refreshBoardData() {
+    try {
+        const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+        boardData = await res.json(); // 최신 목록 확보
+        
+        renderBoard(); // 목록 다시 그리기
+        
+        // [핵심] 지도로 나가지 않도록 수다방 페이지를 강제로 활성화 유지
+        document.getElementById('board-page').classList.remove('hidden');
+        document.getElementById('floating-menu').style.display = 'none';
+        
+        console.log("✅ 수다방 데이터 최신화 및 화면 유지 완료");
+    } catch (e) {
+        console.error("데이터 갱신 실패:", e);
+    }
 }
 
 async function submitReport() {
@@ -256,18 +319,21 @@ async function deleteReport(name, lat, lng) {
     } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
 }
 
+// [수정] 수다글 삭제 함수도 동일하게 보정
 async function deletePost(postId) {
     const pw = prompt("글 작성 시 비밀번호를 입력하세요.");
     if (!pw) return;
-
-    toggleLoading(true, "게시글 삭제 중입니다..."); // 삭제 모달 켜기
+    const q = new URLSearchParams({ type: "delete_post", post_id: postId, pw: pw });
+    
+    toggleLoading(true, "게시글 삭제 중입니다...");
     try {
-        const q = new URLSearchParams({ type: "delete_post", post_id: postId, pw: pw });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
-        if (result.res === "ok") { alert("삭제 성공!"); location.reload(); }
-        else { alert("오류: " + result.msg); }
-    } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
+        if (result.res === "ok") { 
+            alert("글 삭제 성공!"); 
+            await refreshBoardData(); // 리로드 없이 즉시 목록 갱신
+        } else { alert("실패: " + result.msg); }
+    } catch (e) { alert("통신 오류"); } finally { toggleLoading(false); }
 }
 
 function setupEvents() {
