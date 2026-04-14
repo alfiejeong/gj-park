@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyN0YReWbGV0vYmzJLamdkF-pKX2Dlqb-TVuc2lNFPr4RQ0YtT-0UuzpfxzBJR2tKzp/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwdxLOLqQrggzBc2KF_5YgrXpD5ZcGsqvV_RdCovo2nndhR0SE9GXBCkyakvDBz4ugh/exec";
 
 // [보정] 수다방 데이터까지 포함한 통합 수급 로직
 // [수정] CORS 에러를 최소화하는 데이터 수급 로직
@@ -246,16 +246,20 @@ async function refreshBoardData(postId = null) {
     }
 }
 
+// [수정] 수다방 글쓰기 폼 - [object] 에러 해결 버전
 function showWriteForm() {
     const boardContent = document.getElementById('board-content');
+    const currentNick = localStorage.getItem('gj-nick') || "익명"; // nick 대신 명확한 변수명 사용
+    
     boardContent.innerHTML = `
         <div class="write-form" style="animation: fadeIn 0.3s;">
             <button onclick="renderBoard()" class="back-btn" style="margin-bottom:15px;">← 목록으로 돌아가기</button>
             <h4 style="margin-bottom:15px;">새로운 수다 남기기 ✍️</h4>
             <input type="text" id="b-title" placeholder="제목" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
             <div style="display:flex; gap:10px; margin-bottom:10px;">
-        <input type="text" id="b-nick" value="${nick}" placeholder="닉네임" style="flex:1; padding:12px; border-radius:10px; border:1px solid #ddd;">
-        <input type="password" id="b-pw" placeholder="비번" style="flex:1; padding:12px; border-radius:10px; border:1px solid #ddd;"> </div>
+                <input type="text" id="b-nick" value="${currentNick}" placeholder="닉네임" style="flex:1; padding:12px; border-radius:10px; border:1px solid #ddd;">
+                <input type="password" id="b-pw" placeholder="비번" style="flex:1; padding:12px; border-radius:10px; border:1px solid #ddd;">
+            </div>
             <textarea id="b-content" placeholder="내용" style="width:100%; height:150px; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box; resize:none;"></textarea>
             <input type="text" id="b-link" placeholder="링크 (선택)" style="width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
             <div style="margin-bottom:15px;">
@@ -420,15 +424,31 @@ async function submitBoardComment(postId) {
     viewPostDetail(postId);
 }
 
+// [수정] 제보하기 전송 함수 - 비번 누락 해결
 async function submitReport() {
     const nick = document.getElementById('nick').value;
+    const pw = document.getElementById('p-pw').value; // 이 줄이 빠져있었습니다!
     const name = document.getElementById('pname').value;
     const type = document.getElementById('ptype').value;
     const desc = document.getElementById('pdesc').value;
-    if (!nick || !name) return alert("필수 항목 입력!");
-    const q = new URLSearchParams({ type: "report", user: nick, pw: pw, name: name, ptype: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
+    
+    if (!nick || !pw || !name) return alert("닉네임, 비번, 장소명은 필수입니다!");
+    
+    const q = new URLSearchParams({ 
+        type: "report", 
+        user: nick, 
+        pw: pw, 
+        name: name, 
+        ptype: type, 
+        addr: addrStr, 
+        desc: desc, 
+        lat: pickMarker.getPosition().lat(), 
+        lng: pickMarker.getPosition().lng() 
+    });
+    
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
-    alert("제보 완료!"); location.reload();
+    alert("제보 완료!"); 
+    location.reload();
 }
 
 function moveToMyLoc() { navigator.geolocation.getCurrentPosition((pos) => { if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude)); }); }
