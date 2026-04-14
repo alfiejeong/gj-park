@@ -12,7 +12,7 @@ var isDataLoaded = false;
 var boardData = [];
 
 // [주의] 이 변수가 파일 내에 딱 하나만 있는지 반드시 확인하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbytZVqg7VU49qfshjf1g2N3p9p1CgD9BYRhkscEr065-6aZ4mD2TbqSRgIVTaf47tjG/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyN0YReWbGV0vYmzJLamdkF-pKX2Dlqb-TVuc2lNFPr4RQ0YtT-0UuzpfxzBJR2tKzp/exec";
 
 // [보정] 수다방 데이터까지 포함한 통합 수급 로직
 // [수정] CORS 에러를 최소화하는 데이터 수급 로직
@@ -221,7 +221,7 @@ function renderBoard() {
         content.innerHTML = `<div style="text-align:center; padding:50px 0; color:#999;">첫 글의 주인공이 되어보세요!</div>`;
         return;
     }
-    
+
     content.innerHTML = `
         <div id="post-list">
             ${boardData.map(p => `
@@ -253,6 +253,9 @@ function showWriteForm() {
             <button onclick="renderBoard()" class="back-btn" style="margin-bottom:15px;">← 목록으로 돌아가기</button>
             <h4 style="margin-bottom:15px;">새로운 수다 남기기 ✍️</h4>
             <input type="text" id="b-title" placeholder="제목" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+        <input type="text" id="b-nick" value="${nick}" placeholder="닉네임" style="flex:1; padding:12px; border-radius:10px; border:1px solid #ddd;">
+        <input type="password" id="b-pw" placeholder="비번" style="flex:1; padding:12px; border-radius:10px; border:1px solid #ddd;"> </div>
             <textarea id="b-content" placeholder="내용" style="width:100%; height:150px; padding:12px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box; resize:none;"></textarea>
             <input type="text" id="b-link" placeholder="링크 (선택)" style="width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box;">
             <div style="margin-bottom:15px;">
@@ -352,6 +355,7 @@ window.submitPost = async function() {
                 redirect: 'follow',
                 body: JSON.stringify({
                     user: nick,
+                    pw: document.getElementById('b-pw').value, // [추가]
                     title: title,
                     content: content,
                     link: link,
@@ -422,7 +426,7 @@ async function submitReport() {
     const type = document.getElementById('ptype').value;
     const desc = document.getElementById('pdesc').value;
     if (!nick || !name) return alert("필수 항목 입력!");
-    const q = new URLSearchParams({ type: "report", user: nick, name: name, ptype: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
+    const q = new URLSearchParams({ type: "report", user: nick, pw: pw, name: name, ptype: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
     await fetch(`${SCRIPT_URL}?${q.toString()}`, { mode: 'no-cors' });
     alert("제보 완료!"); location.reload();
 }
