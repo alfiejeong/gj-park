@@ -202,11 +202,43 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 .board-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .back-btn { background: #eee; border: none; padding: 10px 15px; border-radius: 10px; font-weight: bold; cursor: pointer; }
 
-/* 글쓰기 플로팅 버튼 */
+/* [수정] 수다방 글쓰기 플로팅 버튼 - 와이드 디자인 */
 #write-btn {
-    position: fixed; bottom: 100px; right: 20px; width: 60px; height: 60px;
-    border-radius: 50%; background: #FFD400; border: 3px solid #000;
-    font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    position: fixed; 
+    bottom: 100px; 
+    right: 20px; 
+    
+    /* [핵심] 너비를 고정하지 않고 글자 길이에 맞춤 */
+    width: auto; 
+    min-width: 100px; 
+    padding: 0 20px; 
+    height: 55px;
+    
+    /* [핵심] 완전한 원에서 양옆이 둥근 알약 모양으로 변경 */
+    border-radius: 30px; 
+    
+    background: #FFD400; 
+    border: 3px solid #000;
+    font-size: 16px; 
+    font-weight: bold; 
+    color: #000;
+    cursor: pointer; 
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    
+    /* [핵심] 글자가 다음 줄로 넘어가는 것을 절대 방지 */
+    white-space: nowrap; 
+    
+    /* 내부 정렬 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 4000;
+}
+
+/* 마우스 올렸을 때 효과 추가 */
+#write-btn:active {
+    transform: scale(0.95);
+    background: #e6bf00;
 }
 
 /* 게시글 카드 디자인 */
