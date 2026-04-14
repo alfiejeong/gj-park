@@ -17,6 +17,12 @@
         </div>
     </div>
 
+<div id="saving-modal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff;">
+    <div class="loader"></div>
+    <p style="margin-top:20px; font-weight:bold; font-size:18px;">데이터 저장 중...</p>
+    <p style="font-size:13px; color:#ccc;">잠시만 기다려 주세요.</p>
+</div>
+
     <div id="board-page" class="hidden">
         <div class="board-container">
             <div class="board-header">
@@ -49,8 +55,8 @@
             <h3>📍 주차 명당 제보</h3>
             <p id="addr-text">지도를 클릭해 위치를 잡으세요</p>
             <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-    <input type="text" id="nick" placeholder="닉네임" style="flex: 1.5; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
-    <input type="password" id="p-pw" placeholder="비밀번호" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+    <input type="text" id="nick" placeholder="닉네임" style="flex: 1.5;">
+    <input type="password" id="p-pw" placeholder="비번(아이디당 1개)" style="flex: 1;">
 </div>
             <input type="text" id="pname" placeholder="장소명">
             <select id="ptype">
