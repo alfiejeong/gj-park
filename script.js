@@ -10,7 +10,7 @@ var preloadedData = [];
 var isDataLoaded = false; 
 var boardData = [];
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby32JfhoHkE4J4V6A0jjVP_c2CoRbfO_NlaBul5IU-AL0G897piqHpNmEGOPXWhJxM/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlKL6qKcvVAV-lClD_nG7zk1jAVJ_IuwZ9Z-A_z6dNiu3Y1ejJ6LLHu5hPx0FVjMTB/exec";
 
 // 1. 초기 데이터 수급 (병렬 처리)
 async function preFetchData() {
