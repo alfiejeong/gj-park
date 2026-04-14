@@ -10,24 +10,39 @@ var preloadedData = [];
 var isDataLoaded = false; 
 var boardData = [];
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlKL6qKcvVAV-lClD_nG7zk1jAVJ_IuwZ9Z-A_z6dNiu3Y1ejJ6LLHu5hPx0FVjMTB/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzvbxe8LL4G5Uo5jqAKbyWK3t7COzT-OiVp_WFaGO74O73BQwTIqKb0euXTYYSKtDk2/exec";
 
-// 1. 초기 데이터 수급 (병렬 처리)
+// [보정] 데이터가 배열일 때만 spread(...)를 사용하도록 안전장치 강화
 async function preFetchData() {
     console.log("🚀 데이터 병렬 동기화 시작...");
-    const fetchSheet = fetch(`${SCRIPT_URL}?type=sheet&t=${new Date().getTime()}`).then(res => res.json());
-    const fetchSeoul = fetch(`${SCRIPT_URL}?type=seoul&t=${new Date().getTime()}`).then(res => res.json());
-    const fetchBoard = fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`).then(res => res.json());
+    const t = new Date().getTime();
+    const fetchSheet = fetch(`${SCRIPT_URL}?type=sheet&t=${t}`).then(res => res.json());
+    const fetchSeoul = fetch(`${SCRIPT_URL}?type=seoul&t=${t}`).then(res => res.json());
+    const fetchBoard = fetch(`${SCRIPT_URL}?type=get_board&t=${t}`).then(res => res.json());
 
     try {
         const results = await Promise.allSettled([fetchSheet, fetchSeoul, fetchBoard]);
-        if (results[0].status === 'fulfilled') preloadedData.push(...results[0].value);
-        if (results[1].status === 'fulfilled') preloadedData.push(...results[1].value);
-        if (results[2].status === 'fulfilled') boardData = results[2].value;
+
+        results.forEach((result, idx) => {
+            if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+                if (idx === 0 || idx === 1) {
+                    preloadedData.push(...result.value);
+                } else {
+                    boardData = result.value;
+                }
+            } else {
+                console.warn(`${idx + 1}번 데이터가 배열이 아니거나 로드 실패:`, result.reason || "규격 오류");
+            }
+        });
 
         isDataLoaded = true;
+        console.log("🏁 데이터 수급 완료");
         if (map) renderAllMarkers();
-    } catch (e) { console.error("데이터 로드 에러:", e); }
+        if (!document.getElementById('board-page').classList.contains('hidden')) renderBoard();
+        
+    } catch (e) {
+        console.error("통합 수급 프로세스 치명적 에러:", e);
+    }
 }
 
 // 2. 지도 및 마커 렌더링
