@@ -10,11 +10,14 @@ var preloadedData = [];
 var isDataLoaded = false; 
 var boardData = [];
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzvbxe8LL4G5Uo5jqAKbyWK3t7COzT-OiVp_WFaGO74O73BQwTIqKb0euXTYYSKtDk2/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw01_gGfx59EKAyjx1B1YopvORen7ReybCvPxipMA1-_aY9TmdTCgRgrbe7yqhkZLkZ/exec";
 
-// [보정] 데이터가 배열일 때만 spread(...)를 사용하도록 안전장치 강화
 async function preFetchData() {
     console.log("🚀 데이터 병렬 동기화 시작...");
+    
+    // [추가] 페이지 처음 띄울 때 로딩 모달 띄우기
+    toggleLoading(true, "주차 정보 조회 중..."); 
+
     const t = new Date().getTime();
     const fetchSheet = fetch(`${SCRIPT_URL}?type=sheet&t=${t}`).then(res => res.json());
     const fetchSeoul = fetch(`${SCRIPT_URL}?type=seoul&t=${t}`).then(res => res.json());
@@ -24,6 +27,7 @@ async function preFetchData() {
         const results = await Promise.allSettled([fetchSheet, fetchSeoul, fetchBoard]);
 
         results.forEach((result, idx) => {
+            // [보정] 데이터가 정확히 '배열' 형태일 때만 처리하여 규격 오류 방지
             if (result.status === 'fulfilled' && Array.isArray(result.value)) {
                 if (idx === 0 || idx === 1) {
                     preloadedData.push(...result.value);
@@ -31,7 +35,8 @@ async function preFetchData() {
                     boardData = result.value;
                 }
             } else {
-                console.warn(`${idx + 1}번 데이터가 배열이 아니거나 로드 실패:`, result.reason || "규격 오류");
+                // 에러 발생 시 시스템이 멈추지 않도록 로그만 남기고 무시
+                console.warn(`${idx + 1}번 데이터 로드 실패 또는 규격 오류.`, result.reason);
             }
         });
 
@@ -42,6 +47,9 @@ async function preFetchData() {
         
     } catch (e) {
         console.error("통합 수급 프로세스 치명적 에러:", e);
+    } finally {
+        // [추가] 데이터 수급이 끝나면(성공/실패 무관) 모달 닫기
+        toggleLoading(false);
     }
 }
 
