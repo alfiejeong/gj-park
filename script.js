@@ -86,7 +86,7 @@ function renderAllMarkers() {
     });
 }
 
-// [1번 오류 해결] 주차 정보 상세창 - 댓글/평점 및 입력칸 복구
+// [보정] 주차 정보 상세창 - 이름 옆에 평점 평균(avgRating) 추가
 function attachInfoWindow(marker, item) {
     const idSafe = (item.name || "noname").replace(/\s/g, '');
     
@@ -99,7 +99,11 @@ function attachInfoWindow(marker, item) {
 
     const contentHtml = `
         <div class="custom-info-window">
-            <div class="title-wrap"><b>${item.name}</b></div>
+            <div class="title-wrap" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <b style="font-size:18px;">${item.name}</b>
+                <span style="color:#f39c12; font-weight:bold; font-size:14px;">⭐ ${item.avgRating || '0.0'}</span>
+            </div>
+
             <div class="info-grid">
                 <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
                 <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
