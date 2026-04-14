@@ -63,21 +63,46 @@ function renderAllMarkers() {
     });
 }
 
-// [보정] 제보 상세내용(desc) 및 삭제 버튼 추가
+// [1번 오류 해결] 주차 정보 상세창 - 댓글/평점 및 입력칸 복구
 function attachInfoWindow(marker, item) {
+    const idSafe = (item.name || "noname").replace(/\s/g, '');
+    
+    // 댓글 목록 생성 로직
+    let commentsHtml = item.comments && item.comments.length > 0 ? item.comments.map(c => `
+        <div class="comment-item" style="padding:8px 0; border-bottom:1px solid #f9f9f9;">
+            <div style="font-size:11px; font-weight:bold; color:#555;">${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
+            <div style="font-size:12px; color:#333; margin-top:2px;">${c.comment}</div>
+        </div>`).join('') : "<div style='font-size:11px; color:#999; text-align:center; padding:15px;'>등록된 후기가 없습니다.</div>";
+
     const contentHtml = `
         <div class="custom-info-window">
             <div class="title-wrap"><b>${item.name}</b></div>
             <div class="info-grid">
                 <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
                 <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
-                <div class="info-full" style="background:#f9f9f9; padding:8px; border-radius:10px; margin:10px 0;">
+                <div class="info-full" style="background:#f9f9f9; padding:8px; border-radius:10px; margin:5px 0;">
                     <span class="info-label">상세내용</span><br>
-                    <span class="info-value" style="white-space:pre-wrap;">${item.desc || "상세내용이 없습니다."}</span>
+                    <span class="info-value" style="white-space:pre-wrap; font-size:12px;">${item.desc || "상세내용 없음"}</span>
                 </div>
             </div>
-            <div style="text-align: right; border-top: 1px solid #eee; padding-top: 5px;">
-                <span onclick="deleteReport('${item.name}', ${item.lat}, ${item.lng})" style="font-size:11px; color:#ff4d4d; cursor:pointer; text-decoration:underline;">제보 삭제 요청</span>
+            
+            <div class="comment-list" style="max-height:100px; overflow-y:auto; border-top:1px solid #FFD400; margin:10px 0;">
+                ${commentsHtml}
+            </div>
+
+            <div class="feedback-section" style="border-top:1px dashed #ddd; padding-top:10px;">
+                <div class="star-rating" id="star-wrap-${idSafe}" style="display:flex; justify-content:center; gap:5px; margin-bottom:5px;">
+                    ${[1,2,3,4,5].map(n => `<span class="star-btn" style="cursor:pointer; font-size:18px; color:#ddd;" onclick="setRatingUI('${idSafe}', ${n})">★</span>`).join('')}
+                    <input type="hidden" id="rate-val-${idSafe}" value="5">
+                </div>
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="cmt-msg-${idSafe}" placeholder="후기 입력" style="flex:1; padding:8px; font-size:12px; border:1px solid #eee; border-radius:10px;">
+                    <button onclick="sendFeedback('${item.name}')" style="background:#FFD400; border:none; border-radius:10px; padding:0 10px; font-weight:bold; font-size:11px;">등록</button>
+                </div>
+            </div>
+
+            <div style="text-align: right; margin-top: 10px; border-top:1px solid #eee; padding-top:5px;">
+                <span onclick="deleteReport('${item.name}', ${item.lat}, ${item.lng})" style="font-size:10px; color:#999; cursor:pointer; text-decoration:underline;">제보 삭제 요청</span>
             </div>
         </div>`;
 
@@ -86,14 +111,24 @@ function attachInfoWindow(marker, item) {
         if (currentInfo) currentInfo.close();
         info.open(map, marker);
         currentInfo = info;
+        setTimeout(() => setRatingUI(idSafe, 5), 100);
     });
 }
 
-// 3. 수다방 기능 (showWriteForm 정의 포함)
+// [2번 오류 해결] 수다방 진입 시 즉시 렌더링 보정
 function openBoard() {
-    document.getElementById('board-page').classList.remove('hidden');
+    const boardPage = document.getElementById('board-page');
+    boardPage.classList.remove('hidden');
     document.getElementById('floating-menu').style.display = 'none';
-    renderBoard();
+    
+    // 데이터 수급이 완료되었는지 확인 후 즉시 렌더링
+    if (boardData.length > 0) {
+        renderBoard();
+    } else {
+        // 데이터가 아직 없다면 로딩 표시 후 가져오기 시도
+        renderBoard(); 
+        fetchBoard(); 
+    }
 }
 
 function closeBoard() {
@@ -147,10 +182,13 @@ function viewPostDetail(postId) {
     document.getElementById('write-btn').style.display = 'none';
 }
 
-// 4. 데이터 저장 및 삭제 (로딩 모달 연동)
-function toggleLoading(show) {
+// [보정] 로딩 모달 제어 함수 (문구 변경 기능 추가)
+function toggleLoading(show, msg = "데이터 저장 중...") {
     const modal = document.getElementById('saving-modal');
-    if (show) modal.classList.remove('hidden'); else modal.classList.add('hidden');
+    const msgEl = document.getElementById('loading-msg');
+    if (msgEl) msgEl.innerText = msg;
+    if (show) modal.classList.remove('hidden');
+    else modal.classList.add('hidden');
 }
 
 async function submitPost() {
@@ -203,22 +241,33 @@ async function submitReport() {
     } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
 }
 
+// [3번 오류 해결] 삭제 시 "삭제 중입니다" 모달 적용
 async function deleteReport(name, lat, lng) {
     const pw = prompt("제보 시 입력한 비밀번호를 입력하세요.");
     if (!pw) return;
-    const q = new URLSearchParams({ type: "delete_report", name: name, lat: lat, lng: lng, pw: pw });
-    const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
-    const result = await res.json();
-    if (result.res === "ok") { alert("삭제 성공!"); location.reload(); } else { alert("실패: " + result.msg); }
+
+    toggleLoading(true, "데이터 삭제 중입니다..."); // 삭제 모달 켜기
+    try {
+        const q = new URLSearchParams({ type: "delete_report", name: name, lat: lat, lng: lng, pw: pw });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        if (result.res === "ok") { alert("삭제되었습니다."); location.reload(); }
+        else { alert("오류: " + result.msg); }
+    } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
 }
 
 async function deletePost(postId) {
     const pw = prompt("글 작성 시 비밀번호를 입력하세요.");
     if (!pw) return;
-    const q = new URLSearchParams({ type: "delete_post", post_id: postId, pw: pw });
-    const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
-    const result = await res.json();
-    if (result.res === "ok") { alert("글 삭제 성공!"); location.reload(); } else { alert("실패: " + result.msg); }
+
+    toggleLoading(true, "게시글 삭제 중입니다..."); // 삭제 모달 켜기
+    try {
+        const q = new URLSearchParams({ type: "delete_post", post_id: postId, pw: pw });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        if (result.res === "ok") { alert("삭제 성공!"); location.reload(); }
+        else { alert("오류: " + result.msg); }
+    } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
 }
 
 function setupEvents() {
