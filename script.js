@@ -190,7 +190,10 @@ function openBoard() {
     const boardPage = document.getElementById('board-page');
     boardPage.classList.remove('hidden');
     document.getElementById('floating-menu').style.display = 'none';
-    
+
+    // [추가] 브라우저 히스토리에 'board' 상태 기록
+    history.pushState({ view: 'board' }, "수다방", "#board");
+
     // 데이터 수급이 완료되었는지 확인 후 즉시 렌더링
     if (boardData.length > 0) {
         renderBoard();
@@ -204,6 +207,8 @@ function openBoard() {
 function closeBoard() {
     document.getElementById('board-page').classList.add('hidden');
     document.getElementById('floating-menu').style.display = 'flex';
+    // 강제로 지도로 돌아왔을 때 주소창 깨끗하게 정리 (뒤로가기를 누른 효과)
+    if (window.location.hash) history.replaceState(null, "", window.location.pathname);
 }
 
 function renderBoard() {
@@ -238,6 +243,10 @@ function showWriteForm() {
 function viewPostDetail(postId) {
     const post = boardData.find(p => String(p.id) === String(postId));
     if (!post) return;
+
+    // [추가] 브라우저 히스토리에 'post' 상태 기록
+    history.pushState({ view: 'post', id: postId }, "글상세", "#post" + postId);
+
     document.getElementById('board-content').innerHTML = `
         <div class="post-detail">
             <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
@@ -375,7 +384,31 @@ function setupEvents() {
 }
 
 function moveToMyLoc() { navigator.geolocation.getCurrentPosition((pos) => { if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude)); }); }
-function openModal() { if (!pickMarker) return alert("위치 선택!"); document.getElementById('addr-text').innerText = "📍 " + addrStr; document.getElementById('modal').classList.remove('hidden'); }
+function openModal() { if (!pickMarker) return alert("위치 선택!"); document.getElementById('addr-text').innerText = "📍 " + addrStr; document.getElementById('modal').classList.remove('hidden'); history.pushState({ view: 'modal' }, "제보하기", "#report");}
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 
 window.onload = () => { preFetchData(); initMap(); };
+
+// [신규 추가] 브라우저 뒤로가기(popstate) 이벤트 감시자
+window.onpopstate = function(event) {
+    const state = event.state;
+
+    // 1. 제보 모달이 열려있다면 닫기
+    const modal = document.getElementById('modal');
+    if (modal && !modal.classList.contains('hidden')) {
+        modal.classList.add('hidden');
+        return;
+    }
+
+    // 2. 수다방 글 상세 화면이라면 목록으로 돌아가기
+    const boardPage = document.getElementById('board-page');
+    if (boardPage && !boardPage.classList.contains('hidden')) {
+        if (state && state.view === 'board') {
+            // 게시글 상세에서 뒤로가기 한 경우 -> 목록 렌더링
+            renderBoard();
+        } else {
+            // 수다방 목록에서 뒤로가기 한 경우 -> 지도 복귀
+            closeBoard();
+        }
+    }
+};
