@@ -16,7 +16,11 @@ async function preFetchData() {
     console.log("🚀 데이터 병렬 동기화 시작...");
     
     // [추가] 페이지 처음 띄울 때 로딩 모달 띄우기
-    toggleLoading(true, "주차 정보 조회 중..."); 
+    // toggleLoading(true, "주차 정보 조회 중..."); 
+
+    // [수정] toggleLoading 대신 기존 스플래시 화면의 글자를 바꿉니다.
+    const splashText = document.querySelector('#loading-screen p');
+    if (splashText) splashText.innerText = "주차 정보 수급 중...";
 
     const t = new Date().getTime();
     const fetchSheet = fetch(`${SCRIPT_URL}?type=sheet&t=${t}`).then(res => res.json());
@@ -42,6 +46,10 @@ async function preFetchData() {
 
         isDataLoaded = true;
         console.log("🏁 데이터 수급 완료");
+
+        // 데이터 로드 완료 후 텍스트 변경
+        if (splashText) splashText.innerText = "명당 지도 생성 중...";
+
         if (map) renderAllMarkers();
         if (!document.getElementById('board-page').classList.contains('hidden')) renderBoard();
         
@@ -49,7 +57,7 @@ async function preFetchData() {
         console.error("통합 수급 프로세스 치명적 에러:", e);
     } finally {
         // [추가] 데이터 수급이 끝나면(성공/실패 무관) 모달 닫기
-        toggleLoading(false);
+        // toggleLoading(false);
     }
 }
 
@@ -64,11 +72,24 @@ function initMap() {
 function setupMap(lat, lng) {
     map = new naver.maps.Map('map', { center: new naver.maps.LatLng(lat, lng), zoom: 15 });
     naver.maps.Event.addListener(map, 'tilesloaded', function() {
-        const screen = document.getElementById('loading-screen');
-        if (screen) { screen.style.opacity = '0'; setTimeout(() => { screen.style.display = 'none'; }, 500); }
-        if (isDataLoaded) renderAllMarkers();
+        // [핵심] 지도 타일이 로드되었고, 데이터도 로드(isDataLoaded)되었을 때만 종료
+        if (isDataLoaded) {
+            hideSplashScreen();
+        }
     });
     setupEvents();
+}
+
+// [추가] 로딩 화면을 부드럽게 제거하는 전용 함수
+function hideSplashScreen() {
+    const screen = document.getElementById('loading-screen');
+    if (screen && screen.style.display !== 'none') {
+        screen.style.opacity = '0';
+        setTimeout(() => { 
+            screen.style.display = 'none'; 
+            console.log("✨ 모든 준비 완료. 지도 공개");
+        }, 500);
+    }
 }
 
 function renderAllMarkers() {
@@ -84,6 +105,8 @@ function renderAllMarkers() {
             item.isRendered = true;
         }
     });
+    // [추가] 마커 렌더링이 끝났는데 아직 로딩 화면이 떠 있다면 닫아줌
+    hideSplashScreen();
 }
 
 // [보정] 주차 정보 상세창 - 이름 옆에 평점 평균(avgRating) 추가
