@@ -10,7 +10,7 @@ var preloadedData = [];
 var isDataLoaded = false; 
 var boardData = [];
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw01_gGfx59EKAyjx1B1YopvORen7ReybCvPxipMA1-_aY9TmdTCgRgrbe7yqhkZLkZ/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJJ52umHPMQJfCT1fVib3jgGlgV-mG0jPwILvHGF08veEeo7mvOwM7krF3evZe9bhx/exec";
 
 async function preFetchData() {
     console.log("🚀 데이터 병렬 동기화 시작...");
@@ -267,9 +267,10 @@ function viewPostDetail(postId) {
     const post = boardData.find(p => String(p.id) === String(postId));
     if (!post) return;
 
-    // [추가] 브라우저 히스토리에 'post' 상태 기록
+    // 브라우저 히스토리 기록
     history.pushState({ view: 'post', id: postId }, "글상세", "#post" + postId);
 
+    const nick = localStorage.getItem('gj-nick') || "";
     document.getElementById('board-content').innerHTML = `
         <div class="post-detail">
             <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
@@ -277,11 +278,69 @@ function viewPostDetail(postId) {
                 <button onclick="deletePost('${post.id}')" style="color:#ff4d4d; border:none; background:none; text-decoration:underline; cursor:pointer;">글 삭제</button>
             </div>
             <h2>${post.title}</h2>
-            <div style="font-size:12px; color:#999; margin-bottom:15px;">작성자: ${post.author}</div>
+            <div style="font-size:12px; color:#999; margin-bottom:15px;">작성자: ${post.author} | ${new Date(post.date).toLocaleString()}</div>
             ${post.imageUrl ? `<img src="${post.imageUrl}" style="width:100%; border-radius:10px; margin-bottom:15px;">` : ""}
-            <p style="white-space:pre-wrap;">${post.content}</p>
+            <p style="white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
+            
+            <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
+                <h5>댓글 (${post.comments ? post.comments.length : 0})</h5>
+                <div id="b-comment-list" style="margin-bottom:20px;">
+                    ${post.comments && post.comments.length > 0 ? post.comments.map(c => `
+                        <div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:8px; font-size:13px;">
+                            <b>${c.user}</b>: ${c.text}
+                        </div>`).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
+                </div>
+                
+                <div style="background:#fffde7; padding:15px; border-radius:15px; border:1px solid #FFD400;">
+                    <div style="display:flex; gap:5px; margin-bottom:10px;">
+                        <input type="text" id="bc-nick-${post.id}" value="${nick}" placeholder="닉네임" style="flex:1.5; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                        <input type="password" id="bc-pw-${post.id}" placeholder="비번" style="flex:1; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <input type="text" id="bc-msg-${post.id}" placeholder="댓글 내용을 입력하세요" style="flex:1; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                        <button onclick="submitBoardComment('${post.id}')" style="background:#FFD400; border:none; border-radius:8px; padding:0 15px; font-weight:bold; cursor:pointer;">등록</button>
+                    </div>
+                </div>
+            </div>
         </div>`;
     document.getElementById('write-btn').style.display = 'none';
+}
+
+async function submitBoardComment(postId) {
+    const nick = document.getElementById(`bc-nick-${postId}`).value;
+    const pw = document.getElementById(`bc-pw-${postId}`).value;
+    const msg = document.getElementById(`bc-msg-${postId}`).value;
+
+    if (!nick || !pw || !msg) return alert("닉네임, 비번, 내용을 모두 입력하세요!");
+
+    toggleLoading(true, "댓글 등록 중...");
+    try {
+        const q = new URLSearchParams({ 
+            type: "add_board_comment", 
+            post_id: postId, 
+            user: nick, 
+            pw: pw, 
+            comment: msg 
+        });
+        
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        
+        if (result.res === "ok") {
+            alert("댓글이 등록되었습니다!");
+            localStorage.setItem('gj-nick', nick);
+            // 리로드 대신 데이터 갱신 후 상세 페이지 유지
+            const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+            boardData = await refreshRes.json();
+            viewPostDetail(postId);
+        } else {
+            alert("오류: " + result.msg);
+        }
+    } catch (e) {
+        alert("통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
 }
 
 // [보정] 로딩 모달 제어 함수 (문구 변경 기능 추가)
