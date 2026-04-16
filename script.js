@@ -263,18 +263,21 @@ function showWriteForm() {
     document.getElementById('write-btn').style.display = 'none';
 }
 
-function viewPostDetail(postId) {
+// [보정] 글 상세 보기: isPush 인자를 추가하여 히스토리 중복 적립 방지
+function viewPostDetail(postId, isPush = true) {
     const post = boardData.find(p => String(p.id) === String(postId));
     if (!post) return;
 
-    // 브라우저 히스토리 기록
-    history.pushState({ view: 'post', id: postId }, "글상세", "#post" + postId);
+    // [핵심] 댓글 등록 후 갱신일 때는 pushState를 건너뜁니다.
+    if (isPush) {
+        history.pushState({ view: 'post', id: postId }, "글상세", "#post" + postId);
+    }
 
     const nick = localStorage.getItem('gj-nick') || "";
     document.getElementById('board-content').innerHTML = `
         <div class="post-detail">
             <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
-                <button onclick="renderBoard()" class="back-btn">← 목록</button>
+                <button onclick="renderBoardWithHistory()" class="back-btn">← 목록</button>
                 <button onclick="deletePost('${post.id}')" style="color:#ff4d4d; border:none; background:none; text-decoration:underline; cursor:pointer;">글 삭제</button>
             </div>
             <h2>${post.title}</h2>
@@ -315,24 +318,20 @@ async function submitBoardComment(postId) {
 
     toggleLoading(true, "댓글 등록 중...");
     try {
-        const q = new URLSearchParams({ 
-            type: "add_board_comment", 
-            post_id: postId, 
-            user: nick, 
-            pw: pw, 
-            comment: msg 
-        });
-        
+        const q = new URLSearchParams({ type: "add_board_comment", post_id: postId, user: nick, pw: pw, comment: msg });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
         
         if (result.res === "ok") {
             alert("댓글이 등록되었습니다!");
             localStorage.setItem('gj-nick', nick);
-            // 리로드 대신 데이터 갱신 후 상세 페이지 유지
+            
+            // 데이터 최신화
             const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
             boardData = await refreshRes.json();
-            viewPostDetail(postId);
+            
+            // [핵심] 두 번째 인자를 false로 주어 뒤로가기 스택이 쌓이지 않게 합니다.
+            viewPostDetail(postId, false); 
         } else {
             alert("오류: " + result.msg);
         }
@@ -350,6 +349,11 @@ function toggleLoading(show, msg = "데이터 저장 중...") {
     if (msgEl) msgEl.innerText = msg;
     if (show) modal.classList.remove('hidden');
     else modal.classList.add('hidden');
+}
+
+// [추가] 목록 버튼 클릭 시 브라우저 뒤로가기를 강제로 실행하여 스택을 맞춤
+function renderBoardWithHistory() {
+    window.history.back();
 }
 
 // [수정] 수다방 게시글 등록 함수
@@ -471,25 +475,33 @@ function closeModal() { document.getElementById('modal').classList.add('hidden')
 
 window.onload = () => { preFetchData(); initMap(); };
 
-// [신규 추가] 브라우저 뒤로가기(popstate) 이벤트 감시자
+// [추가] 목록 버튼 클릭 시 브라우저 뒤로가기를 강제로 실행하여 스택을 맞춤
+function renderBoardWithHistory() {
+    window.history.back();
+}
+
+// [보정] 뒤로가기 감시자 로직 강화
 window.onpopstate = function(event) {
     const state = event.state;
-
-    // 1. 제보 모달이 열려있다면 닫기
     const modal = document.getElementById('modal');
+    const boardPage = document.getElementById('board-page');
+
+    // 1. 모달 닫기
     if (modal && !modal.classList.contains('hidden')) {
         modal.classList.add('hidden');
         return;
     }
 
-    // 2. 수다방 글 상세 화면이라면 목록으로 돌아가기
-    const boardPage = document.getElementById('board-page');
+    // 2. 수다방 제어
     if (boardPage && !boardPage.classList.contains('hidden')) {
-        if (state && state.view === 'board') {
-            // 게시글 상세에서 뒤로가기 한 경우 -> 목록 렌더링
+        if (state && state.view === 'post') {
+            // 히스토리에 포스트 정보가 있다면 해당 글 보여주기
+            viewPostDetail(state.id, false); 
+        } else if (state && state.view === 'board') {
+            // 히스토리에 보드 정보가 있다면 목록 보여주기
             renderBoard();
         } else {
-            // 수다방 목록에서 뒤로가기 한 경우 -> 지도 복귀
+            // 아무 상태도 없다면(지도로 돌아가야 하는 상황) 지도로 복귀
             closeBoard();
         }
     }
