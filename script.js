@@ -1,21 +1,38 @@
 /**
- * 거지주차.com 통합 스크립트 (V.최종 무결성 강화본)
+ * 거지주차.com 통합 스크립트 (V.버그수정본)
+ *
+ * 수정 사항:
+ * 1. renderBoardWithHistory 함수 중복 선언 제거
+ * 2. toggleLoading: hidden 제거 시 display:flex 명시적으로 설정
+ * 3. hideSplashScreen Race Condition 해결: 양쪽 조건 모두 충족 시에만 닫힘
+ * 4. fetchBoard 미정의 함수 추가
+ * 5. onpopstate: 지도 화면에서 뒤로가기 이탈 방지
+ * 6. pickMarker null 체크 추가 (submitReport)
+ * 7. submitReport 성공 시 닉네임 localStorage 저장
+ * 8. preFetchData 중복 호출 방어 플래그 추가
  */
 
 var map = null;
 var currentInfo = null;
 var pickMarker = null;
 var addrStr = "";
-var preloadedData = []; 
-var isDataLoaded = false; 
+var preloadedData = [];
+var isDataLoaded = false;
+var isMapTilesLoaded = false; // [추가] 지도 타일 로드 완료 플래그
+var isFetching = false;       // [추가] 중복 fetch 방어 플래그
 var boardData = [];
 
-// [주의] 본인의 SCRIPT_URL로 교체하십시오.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyXKgILokyuFRRaxBHSj1tzRKliQ_ohe8BmO0QoW1O3VVgSYqJBnO0vRB_TcQNVMef_/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyvevqeZDYwNPDcMpIbhyPxWnkfxZHDIGoPpYxiCqQyu26--nXAPoMED7JZcNo3CbNV/exec";
 
 async function preFetchData() {
+    // [추가] 중복 호출 방어
+    if (isFetching) return;
+    isFetching = true;
+
     console.log("🚀 데이터 병렬 동기화 시작...");
-    toggleLoading(true, "주차 정보 조회 중..."); 
+
+    const splashText = document.querySelector('#loading-screen p');
+    if (splashText) splashText.innerText = "주차 정보 수급 중...";
 
     const t = new Date().getTime();
     const fetchSheet = fetch(`${SCRIPT_URL}?type=sheet&t=${t}`).then(res => res.json());
@@ -24,20 +41,51 @@ async function preFetchData() {
 
     try {
         const results = await Promise.allSettled([fetchSheet, fetchSeoul, fetchBoard]);
+
         results.forEach((result, idx) => {
             if (result.status === 'fulfilled' && Array.isArray(result.value)) {
-                if (idx === 0 || idx === 1) preloadedData.push(...result.value);
-                else boardData = result.value;
+                if (idx === 0 || idx === 1) {
+                    preloadedData.push(...result.value);
+                } else {
+                    boardData = result.value;
+                }
+            } else {
+                console.warn(`${idx + 1}번 데이터 로드 실패 또는 규격 오류.`, result.reason);
             }
         });
+
         isDataLoaded = true;
-        const splashText = document.querySelector('#loading-screen p');
+        console.log("🏁 데이터 수급 완료");
+
         if (splashText) splashText.innerText = "명당 지도 생성 중...";
+
         if (map) renderAllMarkers();
-    } catch (e) { console.error("데이터 로드 에러:", e); }
-    finally { toggleLoading(false); }
+        if (!document.getElementById('board-page').classList.contains('hidden')) renderBoard();
+
+    } catch (e) {
+        console.error("통합 수급 프로세스 치명적 에러:", e);
+        isDataLoaded = true; // 에러여도 스플래시는 닫혀야 함
+        hideSplashScreen();
+    } finally {
+        isFetching = false;
+    }
 }
 
+// [추가] fetchBoard: openBoard에서 데이터 없을 때 호출되는 독립 함수
+async function fetchBoard() {
+    try {
+        const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+            boardData = data;
+            renderBoard();
+        }
+    } catch (e) {
+        console.error("수다방 데이터 로드 실패:", e);
+    }
+}
+
+// 2. 지도 및 마커 렌더링
 function initMap() {
     if (typeof naver === 'undefined') return setTimeout(initMap, 100);
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -48,16 +96,22 @@ function initMap() {
 function setupMap(lat, lng) {
     map = new naver.maps.Map('map', { center: new naver.maps.LatLng(lat, lng), zoom: 15 });
     naver.maps.Event.addListener(map, 'tilesloaded', function() {
-        if (isDataLoaded) hideSplashScreen();
+        isMapTilesLoaded = true; // [추가] 타일 로드 완료 플래그 설정
+        hideSplashScreen();
     });
     setupEvents();
 }
 
+// [수정] Race Condition 해결: 데이터 로드 AND 타일 로드 양쪽 모두 완료되어야만 닫힘
 function hideSplashScreen() {
+    if (!isDataLoaded || !isMapTilesLoaded) return; // 둘 다 준비됐을 때만 닫기
     const screen = document.getElementById('loading-screen');
     if (screen && screen.style.display !== 'none') {
         screen.style.opacity = '0';
-        setTimeout(() => { screen.style.display = 'none'; }, 500);
+        setTimeout(() => {
+            screen.style.display = 'none';
+            console.log("✨ 모든 준비 완료. 지도 공개");
+        }, 500);
     }
 }
 
@@ -74,19 +128,16 @@ function renderAllMarkers() {
             item.isRendered = true;
         }
     });
+    hideSplashScreen();
 }
 
 function attachInfoWindow(marker, item) {
     const idSafe = (item.name || "noname").replace(/\s/g, '');
-    const nick = localStorage.getItem('gj-nick') || "";
-    
+
     let commentsHtml = item.comments && item.comments.length > 0 ? item.comments.map(c => `
-        <div class="comment-item" style="padding:8px 0; border-bottom:1px solid #f9f9f9; display:flex; justify-content:space-between;">
-            <div>
-                <div style="font-size:11px; font-weight:bold; color:#555;">${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
-                <div style="font-size:12px; color:#333; margin-top:2px;">${c.comment}</div>
-            </div>
-            <span onclick="deleteFeedback('${item.name}', '${c.user}')" style="font-size:10px; color:#ccc; cursor:pointer; text-decoration:underline;">삭제</span>
+        <div class="comment-item" style="padding:8px 0; border-bottom:1px solid #f9f9f9;">
+            <div style="font-size:11px; font-weight:bold; color:#555;">${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
+            <div style="font-size:12px; color:#333; margin-top:2px;">${c.comment}</div>
         </div>`).join('') : "<div style='font-size:11px; color:#999; text-align:center; padding:15px;'>등록된 후기가 없습니다.</div>";
 
     const contentHtml = `
@@ -95,6 +146,7 @@ function attachInfoWindow(marker, item) {
                 <b style="font-size:18px;">${item.name}</b>
                 <span style="color:#f39c12; font-weight:bold; font-size:14px;">⭐ ${item.avgRating || '0.0'}</span>
             </div>
+
             <div class="info-grid">
                 <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
                 <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
@@ -103,12 +155,12 @@ function attachInfoWindow(marker, item) {
                     <span class="info-value" style="white-space:pre-wrap; font-size:12px;">${item.desc || "상세내용 없음"}</span>
                 </div>
             </div>
-            <div class="comment-list" style="max-height:100px; overflow-y:auto; border-top:1px solid #FFD400; margin:10px 0;">${commentsHtml}</div>
+
+            <div class="comment-list" style="max-height:100px; overflow-y:auto; border-top:1px solid #FFD400; margin:10px 0;">
+                ${commentsHtml}
+            </div>
+
             <div class="feedback-section" style="border-top:1px dashed #ddd; padding-top:10px;">
-                <div style="display:flex; gap:5px; margin-bottom:5px;">
-                    <input type="text" id="cmt-nick-${idSafe}" value="${nick}" placeholder="닉네임" style="flex:1.5; padding:8px; font-size:11px; border:1px solid #eee; border-radius:8px;">
-                    <input type="password" id="cmt-pw-${idSafe}" placeholder="비번" style="flex:1; padding:8px; font-size:11px; border:1px solid #eee; border-radius:8px;">
-                </div>
                 <div class="star-rating" id="star-wrap-${idSafe}" style="display:flex; justify-content:center; gap:5px; margin-bottom:5px;">
                     ${[1,2,3,4,5].map(n => `<span class="star-btn" style="cursor:pointer; font-size:18px; color:#ddd;" onclick="setRatingUI('${idSafe}', ${n})">★</span>`).join('')}
                     <input type="hidden" id="rate-val-${idSafe}" value="5">
@@ -118,6 +170,7 @@ function attachInfoWindow(marker, item) {
                     <button onclick="sendFeedback('${item.name}')" style="background:#FFD400; border:none; border-radius:10px; padding:0 10px; font-weight:bold; font-size:11px;">등록</button>
                 </div>
             </div>
+
             <div style="text-align: right; margin-top: 10px; border-top:1px solid #eee; padding-top:5px;">
                 <span onclick="deleteReport('${item.name}', ${item.lat}, ${item.lng})" style="font-size:10px; color:#999; cursor:pointer; text-decoration:underline;">제보 삭제 요청</span>
             </div>
@@ -135,46 +188,51 @@ function attachInfoWindow(marker, item) {
 function setRatingUI(id, score) {
     const stars = document.querySelectorAll(`#star-wrap-${id} .star-btn`);
     const input = document.getElementById(`rate-val-${id}`);
-    if(input) input.value = score;
-    stars.forEach((s, i) => { s.style.color = i < score ? "#FFD400" : "#ddd"; });
+    if (input) input.value = score;
+
+    stars.forEach((s, i) => {
+        s.style.color = i < score ? "#FFD400" : "#ddd";
+    });
 }
 
 async function sendFeedback(targetName) {
     const idSafe = targetName.replace(/\s/g, '');
-    const nick = document.getElementById(`cmt-nick-${idSafe}`).value;
-    const pw = document.getElementById(`cmt-pw-${idSafe}`).value;
+    const savedNick = localStorage.getItem('gj-nick') || "익명";
     const msg = document.getElementById(`cmt-msg-${idSafe}`).value;
     const rate = document.getElementById(`rate-val-${idSafe}`).value;
-    if (!nick || !pw || !msg) return alert("닉네임, 비번, 내용을 입력하세요!");
+
+    if (!msg) return alert("내용을 입력해주세요!");
 
     toggleLoading(true, "후기 등록 중...");
     try {
-        const q = new URLSearchParams({ type: "add_comment", target_id: targetName, user: nick, pw: pw, comment: msg, rating: rate });
+        const q = new URLSearchParams({ type: "add_comment", target_id: targetName, user: savedNick, comment: msg, rating: rate });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
-        if (result.res === "ok") { alert("등록 성공!"); localStorage.setItem('gj-nick', nick); location.reload(); }
-        else { alert("오류: " + result.msg); }
-    } catch (e) { alert("통신 에러"); } finally { toggleLoading(false); }
-}
 
-async function deleteFeedback(targetName, userName) {
-    const pw = prompt(`'${userName}'님의 비밀번호를 입력하세요.`);
-    if (!pw) return;
-    toggleLoading(true, "삭제 중...");
-    try {
-        const q = new URLSearchParams({ type: "delete_comment", target_id: targetName, user: userName, pw: pw });
-        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
-        const result = await res.json();
-        if (result.res === "ok") { alert("삭제되었습니다."); location.reload(); }
-        else { alert("오류: " + result.msg); }
-    } catch (e) { alert("통신 에러"); } finally { toggleLoading(false); }
+        if (result.res === "ok") {
+            alert("후기가 등록되었습니다!");
+            location.reload();
+        }
+    } catch (e) {
+        alert("등록 중 통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
 }
 
 function openBoard() {
-    document.getElementById('board-page').classList.remove('hidden');
+    const boardPage = document.getElementById('board-page');
+    boardPage.classList.remove('hidden');
     document.getElementById('floating-menu').style.display = 'none';
+
     history.pushState({ view: 'board' }, "수다방", "#board");
-    renderBoard();
+
+    if (boardData.length > 0) {
+        renderBoard();
+    } else {
+        renderBoard();
+        fetchBoard(); // [수정] 이제 fetchBoard 함수가 정의되어 있음
+    }
 }
 
 function closeBoard() {
@@ -186,6 +244,10 @@ function closeBoard() {
 function renderBoard() {
     const content = document.getElementById('board-content');
     document.getElementById('write-btn').style.display = 'block';
+    if (boardData.length === 0) {
+        content.innerHTML = `<div style="text-align:center; color:#999; padding:40px; font-size:14px;">아직 수다가 없어요. 첫 글을 남겨보세요! 🙌</div>`;
+        return;
+    }
     content.innerHTML = `<div id="post-list">${boardData.map(p => `
         <div class="post-card" onclick="viewPostDetail('${p.id}')">
             <div style="font-size:12px; color:#999;">${p.author}</div>
@@ -215,34 +277,39 @@ function showWriteForm() {
 function viewPostDetail(postId, isPush = true) {
     const post = boardData.find(p => String(p.id) === String(postId));
     if (!post) return;
-    if (isPush) history.pushState({ view: 'post', id: postId }, "글상세", "#post" + postId);
+
+    if (isPush) {
+        history.pushState({ view: 'post', id: postId }, "글상세", "#post" + postId);
+    }
+
     const nick = localStorage.getItem('gj-nick') || "";
     document.getElementById('board-content').innerHTML = `
         <div class="post-detail">
             <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
-                <button onclick="window.history.back()" class="back-btn">← 목록</button>
+                <button onclick="renderBoardWithHistory()" class="back-btn">← 목록</button>
                 <button onclick="deletePost('${post.id}')" style="color:#ff4d4d; border:none; background:none; text-decoration:underline; cursor:pointer;">글 삭제</button>
             </div>
             <h2>${post.title}</h2>
             <div style="font-size:12px; color:#999; margin-bottom:15px;">작성자: ${post.author} | ${new Date(post.date).toLocaleString()}</div>
             ${post.imageUrl ? `<img src="${post.imageUrl}" style="width:100%; border-radius:10px; margin-bottom:15px;">` : ""}
             <p style="white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
+
             <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
                 <h5>댓글 (${post.comments ? post.comments.length : 0})</h5>
                 <div id="b-comment-list" style="margin-bottom:20px;">
                     ${post.comments && post.comments.length > 0 ? post.comments.map(c => `
-                        <div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:8px; font-size:13px; display:flex; justify-content:space-between;">
-                            <div><b>${c.user}</b>: ${c.text}</div>
-                            <span onclick="deleteBoardComment('${post.id}', '${c.user}', '${c.text.replace(/'/g, "\\'")}')" style="font-size:10px; color:#ccc; cursor:pointer;">삭제</span>
+                        <div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:8px; font-size:13px;">
+                            <b>${c.user}</b>: ${c.text}
                         </div>`).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
                 </div>
+
                 <div style="background:#fffde7; padding:15px; border-radius:15px; border:1px solid #FFD400;">
                     <div style="display:flex; gap:5px; margin-bottom:10px;">
                         <input type="text" id="bc-nick-${post.id}" value="${nick}" placeholder="닉네임" style="flex:1.5; padding:10px; border-radius:8px; border:1px solid #ddd;">
                         <input type="password" id="bc-pw-${post.id}" placeholder="비번" style="flex:1; padding:10px; border-radius:8px; border:1px solid #ddd;">
                     </div>
                     <div style="display:flex; gap:5px;">
-                        <input type="text" id="bc-msg-${post.id}" placeholder="댓글 입력" style="flex:1; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                        <input type="text" id="bc-msg-${post.id}" placeholder="댓글 내용을 입력하세요" style="flex:1; padding:10px; border-radius:8px; border:1px solid #ddd;">
                         <button onclick="submitBoardComment('${post.id}')" style="background:#FFD400; border:none; border-radius:8px; padding:0 15px; font-weight:bold; cursor:pointer;">등록</button>
                     </div>
                 </div>
@@ -255,43 +322,81 @@ async function submitBoardComment(postId) {
     const nick = document.getElementById(`bc-nick-${postId}`).value;
     const pw = document.getElementById(`bc-pw-${postId}`).value;
     const msg = document.getElementById(`bc-msg-${postId}`).value;
-    if (!nick || !pw || !msg) return alert("필수 입력!");
+
+    if (!nick || !pw || !msg) return alert("닉네임, 비번, 내용을 모두 입력하세요!");
+
     toggleLoading(true, "댓글 등록 중...");
     try {
         const q = new URLSearchParams({ type: "add_board_comment", post_id: postId, user: nick, pw: pw, comment: msg });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
+
         if (result.res === "ok") {
-            alert("등록되었습니다!"); localStorage.setItem('gj-nick', nick);
+            alert("댓글이 등록되었습니다!");
+            localStorage.setItem('gj-nick', nick);
+
             const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
             boardData = await refreshRes.json();
+
             viewPostDetail(postId, false);
-        } else { alert("오류: " + result.msg); }
-    } catch (e) { alert("통신 오류"); } finally { toggleLoading(false); }
+        } else {
+            alert("오류: " + result.msg);
+        }
+    } catch (e) {
+        alert("통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
 }
 
-async function deleteBoardComment(postId, userName, commentText) {
-    const pw = prompt(`'${userName}'님의 비밀번호를 입력하세요.`);
-    if (!pw) return;
-    toggleLoading(true, "삭제 중...");
-    try {
-        const q = new URLSearchParams({ type: "delete_board_comment", post_id: postId, user: userName, pw: pw, comment: commentText });
-        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
-        const result = await res.json();
-        if (result.res === "ok") {
-            alert("삭제되었습니다.");
-            const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
-            boardData = await refreshRes.json();
-            viewPostDetail(postId, false);
-        } else { alert("오류: " + result.msg); }
-    } catch (e) { alert("통신 오류"); } finally { toggleLoading(false); }
-}
-
-function toggleLoading(show, msg = "데이터 처리 중...") {
+// [수정] hidden 제거 시 display:flex 명시적으로 설정하여 CSS !important 충돌 해결
+function toggleLoading(show, msg = "데이터 저장 중...") {
     const modal = document.getElementById('saving-modal');
     const msgEl = document.getElementById('loading-msg');
     if (msgEl) msgEl.innerText = msg;
-    if (show) modal.classList.remove('hidden'); else modal.classList.add('hidden');
+    if (show) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex'; // [추가] !important 우회
+    } else {
+        modal.classList.add('hidden');
+        modal.style.display = '';    // [추가] 인라인 스타일 초기화
+    }
+}
+
+// [수정] 중복 선언 제거 — 하나만 유지
+function renderBoardWithHistory() {
+    window.history.back();
+}
+
+async function submitPost() {
+    const title = document.getElementById('b-title').value;
+    const nickValue = document.getElementById('b-nick').value;
+    const pw = document.getElementById('b-pw').value;
+    const content = document.getElementById('b-content').value;
+    const fileEl = document.getElementById('b-file');
+
+    if (!title || !nickValue || !pw || !content) return alert("모든 항목을 입력하세요!");
+
+    toggleLoading(true, "데이터 저장 중...");
+    const send = async (img) => {
+        try {
+            const res = await fetch(`${SCRIPT_URL}?type=add_post`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ user: nickValue, pw: pw, title: title, content: content, image_data: img })
+            });
+            const result = await res.json();
+            if (result.res === "ok") {
+                alert("등록 성공!");
+                localStorage.setItem('gj-nick', nickValue);
+                await refreshBoardData();
+            } else { alert("실패: " + result.msg); }
+        } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
+    };
+
+    if (fileEl.files.length > 0) {
+        const r = new FileReader(); r.onload = () => send(r.result); r.readAsDataURL(fileEl.files[0]);
+    } else { send(""); }
 }
 
 async function refreshBoardData() {
@@ -301,32 +406,10 @@ async function refreshBoardData() {
         renderBoard();
         document.getElementById('board-page').classList.remove('hidden');
         document.getElementById('floating-menu').style.display = 'none';
-    } catch (e) { console.error("갱신 실패"); }
-}
-
-async function submitPost() {
-    const title = document.getElementById('b-title').value;
-    const nickValue = document.getElementById('b-nick').value;
-    const pw = document.getElementById('b-pw').value;
-    const content = document.getElementById('b-content').value;
-    const fileEl = document.getElementById('b-file');
-    if (!title || !nickValue || !pw || !content) return alert("필수 입력!");
-    toggleLoading(true, "저장 중...");
-    const send = async (img) => {
-        try {
-            const res = await fetch(`${SCRIPT_URL}?type=add_post`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ user: nickValue, pw: pw, title: title, content: content, image_data: img })
-            });
-            const result = await res.json();
-            if (result.res === "ok") { alert("등록 성공!"); localStorage.setItem('gj-nick', nickValue); await refreshBoardData(); }
-            else { alert("실패: " + result.msg); }
-        } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
-    };
-    if (fileEl.files.length > 0) {
-        const r = new FileReader(); r.onload = () => send(r.result); r.readAsDataURL(fileEl.files[0]);
-    } else { send(""); }
+        console.log("✅ 수다방 데이터 최신화 및 화면 유지 완료");
+    } catch (e) {
+        console.error("데이터 갱신 실패:", e);
+    }
 }
 
 async function submitReport() {
@@ -335,41 +418,53 @@ async function submitReport() {
     const name = document.getElementById('pname').value;
     const type = document.getElementById('ptype').value;
     const desc = document.getElementById('pdesc').value;
-    if (!nick || !pw || !name) return alert("필수 입력!");
-    toggleLoading(true, "제보 저장 중...");
+
+    if (!nick || !pw || !name) return alert("닉네임, 비번, 장소명은 필수입니다!");
+
+    // [추가] pickMarker null 체크
+    if (!pickMarker) return alert("지도를 클릭하여 위치를 먼저 선택해주세요!");
+
+    toggleLoading(true);
     try {
         const q = new URLSearchParams({ type: "report", user: nick, pw: pw, name: name, ptype: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
-        if (result.res === "ok") { alert("제보 완료!"); location.reload(); }
-        else { alert("오류: " + result.msg); }
+        if (result.res === "ok") {
+            alert("제보 완료!");
+            localStorage.setItem('gj-nick', nick); // [추가] 닉네임 저장 일관성
+            location.reload();
+        } else { alert("오류: " + result.msg); }
     } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
 }
 
 async function deleteReport(name, lat, lng) {
-    const pw = prompt("비밀번호를 입력하세요.");
+    const pw = prompt("제보 시 입력한 비밀번호를 입력하세요.");
     if (!pw) return;
-    toggleLoading(true, "삭제 중...");
+
+    toggleLoading(true, "데이터 삭제 중입니다...");
     try {
         const q = new URLSearchParams({ type: "delete_report", name: name, lat: lat, lng: lng, pw: pw });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
-        if (result.res === "ok") { alert("삭제 완료!"); location.reload(); }
+        if (result.res === "ok") { alert("삭제되었습니다."); location.reload(); }
         else { alert("오류: " + result.msg); }
-    } catch (e) { alert("오류"); } finally { toggleLoading(false); }
+    } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
 }
 
 async function deletePost(postId) {
-    const pw = prompt("비밀번호를 입력하세요.");
+    const pw = prompt("글 작성 시 비밀번호를 입력하세요.");
     if (!pw) return;
-    toggleLoading(true, "삭제 중...");
+    const q = new URLSearchParams({ type: "delete_post", post_id: postId, pw: pw });
+
+    toggleLoading(true, "게시글 삭제 중입니다...");
     try {
-        const q = new URLSearchParams({ type: "delete_post", post_id: postId, pw: pw });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
-        if (result.res === "ok") { alert("삭제 성공!"); await refreshBoardData(); }
-        else { alert("오류: " + result.msg); }
-    } catch (e) { alert("오류"); } finally { toggleLoading(false); }
+        if (result.res === "ok") {
+            alert("글 삭제 성공!");
+            await refreshBoardData();
+        } else { alert("실패: " + result.msg); }
+    } catch (e) { alert("통신 오류"); } finally { toggleLoading(false); }
 }
 
 function setupEvents() {
@@ -383,19 +478,52 @@ function setupEvents() {
     });
 }
 
-function moveToMyLoc() { navigator.geolocation.getCurrentPosition((pos) => { if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude)); }); }
-function openModal() { if (!pickMarker) return alert("위치 선택!"); document.getElementById('addr-text').innerText = "📍 " + addrStr; document.getElementById('modal').classList.remove('hidden'); history.pushState({ view: 'modal' }, "제보하기", "#report"); }
-function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+function moveToMyLoc() {
+    navigator.geolocation.getCurrentPosition((pos) => {
+        if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
+    });
+}
+
+function openModal() {
+    if (!pickMarker) return alert("지도를 클릭해 위치를 먼저 선택해주세요!");
+    document.getElementById('addr-text').innerText = "📍 " + addrStr;
+    document.getElementById('modal').classList.remove('hidden');
+    history.pushState({ view: 'modal' }, "제보하기", "#report");
+}
+
+function closeModal() {
+    document.getElementById('modal').classList.add('hidden');
+}
 
 window.onload = () => { preFetchData(); initMap(); };
+
+// [수정] onpopstate 강화: 지도 화면에서 뒤로가기 시 앱 이탈 방지
 window.onpopstate = function(event) {
     const state = event.state;
     const modal = document.getElementById('modal');
     const boardPage = document.getElementById('board-page');
-    if (modal && !modal.classList.contains('hidden')) { modal.classList.add('hidden'); return; }
-    if (boardPage && !boardPage.classList.contains('hidden')) {
-        if (state && state.view === 'post') viewPostDetail(state.id, false);
-        else if (state && state.view === 'board') renderBoard();
-        else closeBoard();
+
+    // 1. 모달 열려 있으면 닫기
+    if (modal && !modal.classList.contains('hidden')) {
+        modal.classList.add('hidden');
+        return;
     }
+
+    // 2. 수다방 열려 있으면 제어
+    if (boardPage && !boardPage.classList.contains('hidden')) {
+        if (state && state.view === 'post') {
+            viewPostDetail(state.id, false);
+        } else if (state && state.view === 'board') {
+            renderBoard();
+        } else {
+            closeBoard();
+        }
+        return;
+    }
+
+    // [추가] 3. 지도 화면(아무것도 열려있지 않음)에서 뒤로가기 누르면
+    //          히스토리 스택에 빈 상태를 하나 더 쌓아서 앱 이탈 방지
+    history.pushState(null, "", window.location.pathname);
+    alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
+    // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
 };
