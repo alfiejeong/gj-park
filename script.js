@@ -1,24 +1,36 @@
 /**
- * 거지주차.com 통합 스크립트 (V.최종 보정본)
+ * 거지주차.com 통합 스크립트 (V.버그수정본)
+ *
+ * 수정 사항:
+ * 1. renderBoardWithHistory 함수 중복 선언 제거
+ * 2. toggleLoading: hidden 제거 시 display:flex 명시적으로 설정
+ * 3. hideSplashScreen Race Condition 해결: 양쪽 조건 모두 충족 시에만 닫힘
+ * 4. fetchBoard 미정의 함수 추가
+ * 5. onpopstate: 지도 화면에서 뒤로가기 이탈 방지
+ * 6. pickMarker null 체크 추가 (submitReport)
+ * 7. submitReport 성공 시 닉네임 localStorage 저장
+ * 8. preFetchData 중복 호출 방어 플래그 추가
  */
 
 var map = null;
 var currentInfo = null;
 var pickMarker = null;
 var addrStr = "";
-var preloadedData = []; 
-var isDataLoaded = false; 
+var preloadedData = [];
+var isDataLoaded = false;
+var isMapTilesLoaded = false; // [추가] 지도 타일 로드 완료 플래그
+var isFetching = false;       // [추가] 중복 fetch 방어 플래그
 var boardData = [];
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJJ52umHPMQJfCT1fVib3jgGlgV-mG0jPwILvHGF08veEeo7mvOwM7krF3evZe9bhx/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwte1xbCD-DtHkM2EroEmXRVI5Vex4GV_I43lRhUAkQrcjrYQTYLyvb9uiGBMeHPFSN/exec";
 
 async function preFetchData() {
-    console.log("🚀 데이터 병렬 동기화 시작...");
-    
-    // [추가] 페이지 처음 띄울 때 로딩 모달 띄우기
-    // toggleLoading(true, "주차 정보 조회 중..."); 
+    // [추가] 중복 호출 방어
+    if (isFetching) return;
+    isFetching = true;
 
-    // [수정] toggleLoading 대신 기존 스플래시 화면의 글자를 바꿉니다.
+    console.log("🚀 데이터 병렬 동기화 시작...");
+
     const splashText = document.querySelector('#loading-screen p');
     if (splashText) splashText.innerText = "주차 정보 수급 중...";
 
@@ -31,7 +43,6 @@ async function preFetchData() {
         const results = await Promise.allSettled([fetchSheet, fetchSeoul, fetchBoard]);
 
         results.forEach((result, idx) => {
-            // [보정] 데이터가 정확히 '배열' 형태일 때만 처리하여 규격 오류 방지
             if (result.status === 'fulfilled' && Array.isArray(result.value)) {
                 if (idx === 0 || idx === 1) {
                     preloadedData.push(...result.value);
@@ -39,7 +50,6 @@ async function preFetchData() {
                     boardData = result.value;
                 }
             } else {
-                // 에러 발생 시 시스템이 멈추지 않도록 로그만 남기고 무시
                 console.warn(`${idx + 1}번 데이터 로드 실패 또는 규격 오류.`, result.reason);
             }
         });
@@ -47,17 +57,31 @@ async function preFetchData() {
         isDataLoaded = true;
         console.log("🏁 데이터 수급 완료");
 
-        // 데이터 로드 완료 후 텍스트 변경
         if (splashText) splashText.innerText = "명당 지도 생성 중...";
 
         if (map) renderAllMarkers();
         if (!document.getElementById('board-page').classList.contains('hidden')) renderBoard();
-        
+
     } catch (e) {
         console.error("통합 수급 프로세스 치명적 에러:", e);
+        isDataLoaded = true; // 에러여도 스플래시는 닫혀야 함
+        hideSplashScreen();
     } finally {
-        // [추가] 데이터 수급이 끝나면(성공/실패 무관) 모달 닫기
-        // toggleLoading(false);
+        isFetching = false;
+    }
+}
+
+// [추가] fetchBoard: openBoard에서 데이터 없을 때 호출되는 독립 함수
+async function fetchBoard() {
+    try {
+        const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+            boardData = data;
+            renderBoard();
+        }
+    } catch (e) {
+        console.error("수다방 데이터 로드 실패:", e);
     }
 }
 
@@ -72,21 +96,20 @@ function initMap() {
 function setupMap(lat, lng) {
     map = new naver.maps.Map('map', { center: new naver.maps.LatLng(lat, lng), zoom: 15 });
     naver.maps.Event.addListener(map, 'tilesloaded', function() {
-        // [핵심] 지도 타일이 로드되었고, 데이터도 로드(isDataLoaded)되었을 때만 종료
-        if (isDataLoaded) {
-            hideSplashScreen();
-        }
+        isMapTilesLoaded = true; // [추가] 타일 로드 완료 플래그 설정
+        hideSplashScreen();
     });
     setupEvents();
 }
 
-// [추가] 로딩 화면을 부드럽게 제거하는 전용 함수
+// [수정] Race Condition 해결: 데이터 로드 AND 타일 로드 양쪽 모두 완료되어야만 닫힘
 function hideSplashScreen() {
+    if (!isDataLoaded || !isMapTilesLoaded) return; // 둘 다 준비됐을 때만 닫기
     const screen = document.getElementById('loading-screen');
     if (screen && screen.style.display !== 'none') {
         screen.style.opacity = '0';
-        setTimeout(() => { 
-            screen.style.display = 'none'; 
+        setTimeout(() => {
+            screen.style.display = 'none';
             console.log("✨ 모든 준비 완료. 지도 공개");
         }, 500);
     }
@@ -105,15 +128,12 @@ function renderAllMarkers() {
             item.isRendered = true;
         }
     });
-    // [추가] 마커 렌더링이 끝났는데 아직 로딩 화면이 떠 있다면 닫아줌
     hideSplashScreen();
 }
 
-// [보정] 주차 정보 상세창 - 이름 옆에 평점 평균(avgRating) 추가
 function attachInfoWindow(marker, item) {
     const idSafe = (item.name || "noname").replace(/\s/g, '');
-    
-    // 댓글 목록 생성 로직
+
     let commentsHtml = item.comments && item.comments.length > 0 ? item.comments.map(c => `
         <div class="comment-item" style="padding:8px 0; border-bottom:1px solid #f9f9f9;">
             <div style="font-size:11px; font-weight:bold; color:#555;">${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
@@ -135,7 +155,7 @@ function attachInfoWindow(marker, item) {
                     <span class="info-value" style="white-space:pre-wrap; font-size:12px;">${item.desc || "상세내용 없음"}</span>
                 </div>
             </div>
-            
+
             <div class="comment-list" style="max-height:100px; overflow-y:auto; border-top:1px solid #FFD400; margin:10px 0;">
                 ${commentsHtml}
             </div>
@@ -165,41 +185,33 @@ function attachInfoWindow(marker, item) {
     });
 }
 
-// [보정] 별점 UI: 클릭 시 노란색으로 즉각 변경되도록 스타일 강제 부여
 function setRatingUI(id, score) {
     const stars = document.querySelectorAll(`#star-wrap-${id} .star-btn`);
     const input = document.getElementById(`rate-val-${id}`);
-    if(input) input.value = score;
-    
+    if (input) input.value = score;
+
     stars.forEach((s, i) => {
-        // [수정] CSS 클래스 대신 직접 스타일을 제어하여 확실하게 반응하게 함
-        if (i < score) {
-            s.style.color = "#FFD400"; // 활성 색상
-        } else {
-            s.style.color = "#ddd"; // 비활성 색상
-        }
+        s.style.color = i < score ? "#FFD400" : "#ddd";
     });
 }
 
-// [보정] 후기 등록 함수: 등록 후 지도로 튕기지 않고 상태 유지
 async function sendFeedback(targetName) {
     const idSafe = targetName.replace(/\s/g, '');
     const savedNick = localStorage.getItem('gj-nick') || "익명";
     const msg = document.getElementById(`cmt-msg-${idSafe}`).value;
     const rate = document.getElementById(`rate-val-${idSafe}`).value;
-    
+
     if (!msg) return alert("내용을 입력해주세요!");
 
     toggleLoading(true, "후기 등록 중...");
     try {
         const q = new URLSearchParams({ type: "add_comment", target_id: targetName, user: savedNick, comment: msg, rating: rate });
-        // GET 전송의 안정성을 위해 fetch 호출 형식을 보정함
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
-        
+
         if (result.res === "ok") {
             alert("후기가 등록되었습니다!");
-            location.reload(); // 지도의 마커 데이터를 갱신하기 위해 지도는 새로고침 유지
+            location.reload();
         }
     } catch (e) {
         alert("등록 중 통신 오류가 발생했습니다.");
@@ -208,35 +220,34 @@ async function sendFeedback(targetName) {
     }
 }
 
-// [2번 오류 해결] 수다방 진입 시 즉시 렌더링 보정
 function openBoard() {
     const boardPage = document.getElementById('board-page');
     boardPage.classList.remove('hidden');
     document.getElementById('floating-menu').style.display = 'none';
 
-    // [추가] 브라우저 히스토리에 'board' 상태 기록
     history.pushState({ view: 'board' }, "수다방", "#board");
 
-    // 데이터 수급이 완료되었는지 확인 후 즉시 렌더링
     if (boardData.length > 0) {
         renderBoard();
     } else {
-        // 데이터가 아직 없다면 로딩 표시 후 가져오기 시도
-        renderBoard(); 
-        fetchBoard(); 
+        renderBoard();
+        fetchBoard(); // [수정] 이제 fetchBoard 함수가 정의되어 있음
     }
 }
 
 function closeBoard() {
     document.getElementById('board-page').classList.add('hidden');
     document.getElementById('floating-menu').style.display = 'flex';
-    // 강제로 지도로 돌아왔을 때 주소창 깨끗하게 정리 (뒤로가기를 누른 효과)
     if (window.location.hash) history.replaceState(null, "", window.location.pathname);
 }
 
 function renderBoard() {
     const content = document.getElementById('board-content');
     document.getElementById('write-btn').style.display = 'block';
+    if (boardData.length === 0) {
+        content.innerHTML = `<div style="text-align:center; color:#999; padding:40px; font-size:14px;">아직 수다가 없어요. 첫 글을 남겨보세요! 🙌</div>`;
+        return;
+    }
     content.innerHTML = `<div id="post-list">${boardData.map(p => `
         <div class="post-card" onclick="viewPostDetail('${p.id}')">
             <div style="font-size:12px; color:#999;">${p.author}</div>
@@ -263,12 +274,10 @@ function showWriteForm() {
     document.getElementById('write-btn').style.display = 'none';
 }
 
-// [보정] 글 상세 보기: isPush 인자를 추가하여 히스토리 중복 적립 방지
 function viewPostDetail(postId, isPush = true) {
     const post = boardData.find(p => String(p.id) === String(postId));
     if (!post) return;
 
-    // [핵심] 댓글 등록 후 갱신일 때는 pushState를 건너뜁니다.
     if (isPush) {
         history.pushState({ view: 'post', id: postId }, "글상세", "#post" + postId);
     }
@@ -284,7 +293,7 @@ function viewPostDetail(postId, isPush = true) {
             <div style="font-size:12px; color:#999; margin-bottom:15px;">작성자: ${post.author} | ${new Date(post.date).toLocaleString()}</div>
             ${post.imageUrl ? `<img src="${post.imageUrl}" style="width:100%; border-radius:10px; margin-bottom:15px;">` : ""}
             <p style="white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
-            
+
             <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
                 <h5>댓글 (${post.comments ? post.comments.length : 0})</h5>
                 <div id="b-comment-list" style="margin-bottom:20px;">
@@ -293,7 +302,7 @@ function viewPostDetail(postId, isPush = true) {
                             <b>${c.user}</b>: ${c.text}
                         </div>`).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
                 </div>
-                
+
                 <div style="background:#fffde7; padding:15px; border-radius:15px; border:1px solid #FFD400;">
                     <div style="display:flex; gap:5px; margin-bottom:10px;">
                         <input type="text" id="bc-nick-${post.id}" value="${nick}" placeholder="닉네임" style="flex:1.5; padding:10px; border-radius:8px; border:1px solid #ddd;">
@@ -321,17 +330,15 @@ async function submitBoardComment(postId) {
         const q = new URLSearchParams({ type: "add_board_comment", post_id: postId, user: nick, pw: pw, comment: msg });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
-        
+
         if (result.res === "ok") {
             alert("댓글이 등록되었습니다!");
             localStorage.setItem('gj-nick', nick);
-            
-            // 데이터 최신화
+
             const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
             boardData = await refreshRes.json();
-            
-            // [핵심] 두 번째 인자를 false로 주어 뒤로가기 스택이 쌓이지 않게 합니다.
-            viewPostDetail(postId, false); 
+
+            viewPostDetail(postId, false);
         } else {
             alert("오류: " + result.msg);
         }
@@ -342,21 +349,25 @@ async function submitBoardComment(postId) {
     }
 }
 
-// [보정] 로딩 모달 제어 함수 (문구 변경 기능 추가)
+// [수정] hidden 제거 시 display:flex 명시적으로 설정하여 CSS !important 충돌 해결
 function toggleLoading(show, msg = "데이터 저장 중...") {
     const modal = document.getElementById('saving-modal');
     const msgEl = document.getElementById('loading-msg');
     if (msgEl) msgEl.innerText = msg;
-    if (show) modal.classList.remove('hidden');
-    else modal.classList.add('hidden');
+    if (show) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex'; // [추가] !important 우회
+    } else {
+        modal.classList.add('hidden');
+        modal.style.display = '';    // [추가] 인라인 스타일 초기화
+    }
 }
 
-// [추가] 목록 버튼 클릭 시 브라우저 뒤로가기를 강제로 실행하여 스택을 맞춤
+// [수정] 중복 선언 제거 — 하나만 유지
 function renderBoardWithHistory() {
     window.history.back();
 }
 
-// [수정] 수다방 게시글 등록 함수
 async function submitPost() {
     const title = document.getElementById('b-title').value;
     const nickValue = document.getElementById('b-nick').value;
@@ -378,8 +389,7 @@ async function submitPost() {
             if (result.res === "ok") {
                 alert("등록 성공!");
                 localStorage.setItem('gj-nick', nickValue);
-                // [핵심 보정] 리로드 대신 데이터만 갱신하고 수다방 화면 유지
-                await refreshBoardData(); 
+                await refreshBoardData();
             } else { alert("실패: " + result.msg); }
         } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
     };
@@ -389,18 +399,13 @@ async function submitPost() {
     } else { send(""); }
 }
 
-// [추가] 게시판 데이터 갱신 및 화면 유지 전용 함수
 async function refreshBoardData() {
     try {
         const res = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
-        boardData = await res.json(); // 최신 목록 확보
-        
-        renderBoard(); // 목록 다시 그리기
-        
-        // [핵심] 지도로 나가지 않도록 수다방 페이지를 강제로 활성화 유지
+        boardData = await res.json();
+        renderBoard();
         document.getElementById('board-page').classList.remove('hidden');
         document.getElementById('floating-menu').style.display = 'none';
-        
         console.log("✅ 수다방 데이터 최신화 및 화면 유지 완료");
     } catch (e) {
         console.error("데이터 갱신 실패:", e);
@@ -416,22 +421,27 @@ async function submitReport() {
 
     if (!nick || !pw || !name) return alert("닉네임, 비번, 장소명은 필수입니다!");
 
+    // [추가] pickMarker null 체크
+    if (!pickMarker) return alert("지도를 클릭하여 위치를 먼저 선택해주세요!");
+
     toggleLoading(true);
     try {
         const q = new URLSearchParams({ type: "report", user: nick, pw: pw, name: name, ptype: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
-        if (result.res === "ok") { alert("제보 완료!"); location.reload(); }
-        else { alert("오류: " + result.msg); }
+        if (result.res === "ok") {
+            alert("제보 완료!");
+            localStorage.setItem('gj-nick', nick); // [추가] 닉네임 저장 일관성
+            location.reload();
+        } else { alert("오류: " + result.msg); }
     } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
 }
 
-// [3번 오류 해결] 삭제 시 "삭제 중입니다" 모달 적용
 async function deleteReport(name, lat, lng) {
     const pw = prompt("제보 시 입력한 비밀번호를 입력하세요.");
     if (!pw) return;
 
-    toggleLoading(true, "데이터 삭제 중입니다..."); // 삭제 모달 켜기
+    toggleLoading(true, "데이터 삭제 중입니다...");
     try {
         const q = new URLSearchParams({ type: "delete_report", name: name, lat: lat, lng: lng, pw: pw });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
@@ -441,19 +451,18 @@ async function deleteReport(name, lat, lng) {
     } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
 }
 
-// [수정] 수다글 삭제 함수도 동일하게 보정
 async function deletePost(postId) {
     const pw = prompt("글 작성 시 비밀번호를 입력하세요.");
     if (!pw) return;
     const q = new URLSearchParams({ type: "delete_post", post_id: postId, pw: pw });
-    
+
     toggleLoading(true, "게시글 삭제 중입니다...");
     try {
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
-        if (result.res === "ok") { 
-            alert("글 삭제 성공!"); 
-            await refreshBoardData(); // 리로드 없이 즉시 목록 갱신
+        if (result.res === "ok") {
+            alert("글 삭제 성공!");
+            await refreshBoardData();
         } else { alert("실패: " + result.msg); }
     } catch (e) { alert("통신 오류"); } finally { toggleLoading(false); }
 }
@@ -469,40 +478,52 @@ function setupEvents() {
     });
 }
 
-function moveToMyLoc() { navigator.geolocation.getCurrentPosition((pos) => { if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude)); }); }
-function openModal() { if (!pickMarker) return alert("위치 선택!"); document.getElementById('addr-text').innerText = "📍 " + addrStr; document.getElementById('modal').classList.remove('hidden'); history.pushState({ view: 'modal' }, "제보하기", "#report");}
-function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+function moveToMyLoc() {
+    navigator.geolocation.getCurrentPosition((pos) => {
+        if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
+    });
+}
+
+function openModal() {
+    if (!pickMarker) return alert("지도를 클릭해 위치를 먼저 선택해주세요!");
+    document.getElementById('addr-text').innerText = "📍 " + addrStr;
+    document.getElementById('modal').classList.remove('hidden');
+    history.pushState({ view: 'modal' }, "제보하기", "#report");
+}
+
+function closeModal() {
+    document.getElementById('modal').classList.add('hidden');
+}
 
 window.onload = () => { preFetchData(); initMap(); };
 
-// [추가] 목록 버튼 클릭 시 브라우저 뒤로가기를 강제로 실행하여 스택을 맞춤
-function renderBoardWithHistory() {
-    window.history.back();
-}
-
-// [보정] 뒤로가기 감시자 로직 강화
+// [수정] onpopstate 강화: 지도 화면에서 뒤로가기 시 앱 이탈 방지
 window.onpopstate = function(event) {
     const state = event.state;
     const modal = document.getElementById('modal');
     const boardPage = document.getElementById('board-page');
 
-    // 1. 모달 닫기
+    // 1. 모달 열려 있으면 닫기
     if (modal && !modal.classList.contains('hidden')) {
         modal.classList.add('hidden');
         return;
     }
 
-    // 2. 수다방 제어
+    // 2. 수다방 열려 있으면 제어
     if (boardPage && !boardPage.classList.contains('hidden')) {
         if (state && state.view === 'post') {
-            // 히스토리에 포스트 정보가 있다면 해당 글 보여주기
-            viewPostDetail(state.id, false); 
+            viewPostDetail(state.id, false);
         } else if (state && state.view === 'board') {
-            // 히스토리에 보드 정보가 있다면 목록 보여주기
             renderBoard();
         } else {
-            // 아무 상태도 없다면(지도로 돌아가야 하는 상황) 지도로 복귀
             closeBoard();
         }
+        return;
     }
+
+    // [추가] 3. 지도 화면(아무것도 열려있지 않음)에서 뒤로가기 누르면
+    //          히스토리 스택에 빈 상태를 하나 더 쌓아서 앱 이탈 방지
+    history.pushState(null, "", window.location.pathname);
+    alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
+    // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
 };
