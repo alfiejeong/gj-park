@@ -9,8 +9,7 @@
 </head>
 <body style="background-color: #FFD400; margin: 0; padding: 0;">
 
-    <!-- [수정] saving-modal: 인라인 display:flex 제거 → toggleLoading()이 hidden 클래스로만 제어 -->
-    <div id="saving-modal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; flex-direction:column; align-items:center; justify-content:center; color:#fff;">
+    <div id="saving-modal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff;">
         <div class="loader"></div>
         <p id="loading-msg" style="margin-top:20px; font-weight:bold; font-size:18px;">데이터 처리 중...</p>
     </div>
