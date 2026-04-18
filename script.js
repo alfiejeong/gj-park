@@ -21,8 +21,10 @@ var isDataLoaded = false;
 var isMapTilesLoaded = false; // [추가] 지도 타일 로드 완료 플래그
 var isFetching = false;       // [추가] 중복 fetch 방어 플래그
 var boardData = [];
+var currentBoardPage = 1;      // [추가] 수다방 현재 페이지
+const POSTS_PER_PAGE = 10;     // [추가] 페이지당 게시글 수
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyvevqeZDYwNPDcMpIbhyPxWnkfxZHDIGoPpYxiCqQyu26--nXAPoMED7JZcNo3CbNV/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzPY5Rk_yEFOayX0IwGkzmY_sxuAvb6lOBKaimMjVIUNreQlruTLXxRo-Rpj_E_0Ef1/exec";
 
 async function preFetchData() {
     // [추가] 중복 호출 방어
@@ -133,12 +135,21 @@ function renderAllMarkers() {
 
 function attachInfoWindow(marker, item) {
     const idSafe = (item.name || "noname").replace(/\s/g, '');
+    const savedNick = localStorage.getItem('gj-nick') || '';
+    // [추가] onclick 인자에 안전하게 박기 위한 이스케이프
+    const nameEsc = String(item.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
-    let commentsHtml = item.comments && item.comments.length > 0 ? item.comments.map(c => `
+    let commentsHtml = item.comments && item.comments.length > 0 ? item.comments.map(c => {
+        const userEsc = String(c.user).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `
         <div class="comment-item" style="padding:8px 0; border-bottom:1px solid #f9f9f9;">
-            <div style="font-size:11px; font-weight:bold; color:#555;">${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:11px; font-weight:bold; color:#555;">${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
+                <span onclick="deleteSpotComment('${nameEsc}', '${userEsc}')" style="font-size:10px; color:#bbb; cursor:pointer; text-decoration:underline;">삭제</span>
+            </div>
             <div style="font-size:12px; color:#333; margin-top:2px;">${c.comment}</div>
-        </div>`).join('') : "<div style='font-size:11px; color:#999; text-align:center; padding:15px;'>등록된 후기가 없습니다.</div>";
+        </div>`;
+    }).join('') : "<div style='font-size:11px; color:#999; text-align:center; padding:15px;'>등록된 후기가 없습니다.</div>";
 
     const contentHtml = `
         <div class="custom-info-window">
@@ -165,14 +176,19 @@ function attachInfoWindow(marker, item) {
                     ${[1,2,3,4,5].map(n => `<span class="star-btn" style="cursor:pointer; font-size:18px; color:#ddd;" onclick="setRatingUI('${idSafe}', ${n})">★</span>`).join('')}
                     <input type="hidden" id="rate-val-${idSafe}" value="5">
                 </div>
+                <!-- [수정] 닉/비번 칸을 균일(flex:1 1 0)하게 맞추고, min-width:0으로 input 기본 최소폭 해제 → 정보창 내부로 쏙 들어오게 -->
+                <div style="display:flex; gap:5px; margin-bottom:5px;">
+                    <input type="text" id="cmt-nick-${idSafe}" value="${savedNick}" placeholder="닉네임" style="flex:1 1 0; min-width:0; width:0; padding:8px; font-size:12px; border:1px solid #eee; border-radius:10px; box-sizing:border-box;">
+                    <input type="password" id="cmt-pw-${idSafe}" placeholder="비번" style="flex:1 1 0; min-width:0; width:0; padding:8px; font-size:12px; border:1px solid #eee; border-radius:10px; box-sizing:border-box;">
+                </div>
                 <div style="display:flex; gap:5px;">
-                    <input type="text" id="cmt-msg-${idSafe}" placeholder="후기 입력" style="flex:1; padding:8px; font-size:12px; border:1px solid #eee; border-radius:10px;">
-                    <button onclick="sendFeedback('${item.name}')" style="background:#FFD400; border:none; border-radius:10px; padding:0 10px; font-weight:bold; font-size:11px;">등록</button>
+                    <input type="text" id="cmt-msg-${idSafe}" placeholder="후기 입력 (아이디당 1개)" style="flex:1 1 0; min-width:0; width:0; padding:8px; font-size:12px; border:1px solid #eee; border-radius:10px; box-sizing:border-box;">
+                    <button onclick="sendFeedback('${nameEsc}')" style="flex:0 0 auto; background:#FFD400; border:none; border-radius:10px; padding:0 10px; font-weight:bold; font-size:11px;">등록</button>
                 </div>
             </div>
 
             <div style="text-align: right; margin-top: 10px; border-top:1px solid #eee; padding-top:5px;">
-                <span onclick="deleteReport('${item.name}', ${item.lat}, ${item.lng})" style="font-size:10px; color:#999; cursor:pointer; text-decoration:underline;">제보 삭제 요청</span>
+                <span onclick="deleteReport('${nameEsc}', ${item.lat}, ${item.lng})" style="font-size:10px; color:#999; cursor:pointer; text-decoration:underline;">제보 삭제 요청</span>
             </div>
         </div>`;
 
@@ -197,24 +213,54 @@ function setRatingUI(id, score) {
 
 async function sendFeedback(targetName) {
     const idSafe = targetName.replace(/\s/g, '');
-    const savedNick = localStorage.getItem('gj-nick') || "익명";
+    // [수정] 닉네임 + 비번을 폼에서 직접 읽도록 변경 (아이디당 1개 규칙 + 무결성)
+    const nick = document.getElementById(`cmt-nick-${idSafe}`).value.trim();
+    const pw = document.getElementById(`cmt-pw-${idSafe}`).value;
     const msg = document.getElementById(`cmt-msg-${idSafe}`).value;
     const rate = document.getElementById(`rate-val-${idSafe}`).value;
 
+    if (!nick) return alert("닉네임을 입력해주세요!");
+    if (!pw) return alert("비밀번호를 입력해주세요!");
     if (!msg) return alert("내용을 입력해주세요!");
 
     toggleLoading(true, "후기 등록 중...");
     try {
-        const q = new URLSearchParams({ type: "add_comment", target_id: targetName, user: savedNick, comment: msg, rating: rate });
+        const q = new URLSearchParams({ type: "add_comment", target_id: targetName, user: nick, pw: pw, comment: msg, rating: rate });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
 
         if (result.res === "ok") {
-            alert("후기가 등록되었습니다!");
+            localStorage.setItem('gj-nick', nick);
+            alert(result.updated ? "기존 후기가 갱신되었습니다!" : "후기가 등록되었습니다!");
             location.reload();
+        } else {
+            alert("오류: " + (result.msg || "등록에 실패했습니다."));
         }
     } catch (e) {
         alert("등록 중 통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
+}
+
+// [신규] 주차 후기 삭제: 본인 비번 입력 시 삭제
+async function deleteSpotComment(targetName, originalUser) {
+    const pw = prompt(`[${originalUser}] 님이 작성한 후기를 삭제하려면 비밀번호를 입력하세요.`);
+    if (!pw) return;
+
+    toggleLoading(true, "후기 삭제 중...");
+    try {
+        const q = new URLSearchParams({ type: "delete_comment", target_id: targetName, user: originalUser, pw: pw });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        if (result.res === "ok") {
+            alert("후기가 삭제되었습니다.");
+            location.reload();
+        } else {
+            alert("오류: " + (result.msg || "삭제에 실패했습니다."));
+        }
+    } catch (e) {
+        alert("통신 오류가 발생했습니다.");
     } finally {
         toggleLoading(false);
     }
@@ -226,6 +272,8 @@ function openBoard() {
     document.getElementById('floating-menu').style.display = 'none';
 
     history.pushState({ view: 'board' }, "수다방", "#board");
+
+    currentBoardPage = 1; // [추가] 수다방 진입 시 1페이지로 초기화
 
     if (boardData.length > 0) {
         renderBoard();
@@ -248,11 +296,63 @@ function renderBoard() {
         content.innerHTML = `<div style="text-align:center; color:#999; padding:40px; font-size:14px;">아직 수다가 없어요. 첫 글을 남겨보세요! 🙌</div>`;
         return;
     }
-    content.innerHTML = `<div id="post-list">${boardData.map(p => `
-        <div class="post-card" onclick="viewPostDetail('${p.id}')">
+
+    // [추가] 페이지네이션 계산
+    const total = boardData.length;
+    const totalPages = Math.max(1, Math.ceil(total / POSTS_PER_PAGE));
+    if (currentBoardPage > totalPages) currentBoardPage = totalPages;
+    if (currentBoardPage < 1) currentBoardPage = 1;
+
+    const startIdx = (currentBoardPage - 1) * POSTS_PER_PAGE;
+    const endIdx = startIdx + POSTS_PER_PAGE;
+    const pageData = boardData.slice(startIdx, endIdx);
+
+    const postListHtml = pageData.map(p => {
+        const pidEsc = String(p.id).replace(/'/g, "\\'");
+        return `
+        <div class="post-card" onclick="viewPostDetail('${pidEsc}')">
             <div style="font-size:12px; color:#999;">${p.author}</div>
             <h3 style="margin:5px 0;">${p.title}</h3>
-        </div>`).join('')}</div>`;
+        </div>`;
+    }).join('');
+
+    const paginationHtml = renderPagination(currentBoardPage, totalPages);
+
+    content.innerHTML = `<div id="post-list">${postListHtml}</div>${paginationHtml}`;
+}
+
+// [신규] 페이지 번호 UI 생성 (현재 페이지 기준 앞뒤 2개씩 + 처음/끝)
+function renderPagination(current, total) {
+    if (total <= 1) return '';
+    let start = Math.max(1, current - 2);
+    let end = Math.min(total, start + 4);
+    start = Math.max(1, end - 4);
+
+    let html = '<div class="pagination">';
+    html += `<button class="page-btn" ${current === 1 ? 'disabled' : ''} onclick="goToBoardPage(${current - 1})">‹</button>`;
+    if (start > 1) {
+        html += `<button class="page-btn" onclick="goToBoardPage(1)">1</button>`;
+        if (start > 2) html += `<span class="page-ellipsis">…</span>`;
+    }
+    for (let i = start; i <= end; i++) {
+        html += `<button class="page-btn ${i === current ? 'active' : ''}" onclick="goToBoardPage(${i})">${i}</button>`;
+    }
+    if (end < total) {
+        if (end < total - 1) html += `<span class="page-ellipsis">…</span>`;
+        html += `<button class="page-btn" onclick="goToBoardPage(${total})">${total}</button>`;
+    }
+    html += `<button class="page-btn" ${current === total ? 'disabled' : ''} onclick="goToBoardPage(${current + 1})">›</button>`;
+    html += '</div>';
+    return html;
+}
+
+// [신규] 페이지 이동
+function goToBoardPage(page) {
+    currentBoardPage = page;
+    renderBoard();
+    const boardPage = document.getElementById('board-page');
+    if (boardPage) boardPage.scrollTop = 0;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function showWriteForm() {
@@ -297,10 +397,16 @@ function viewPostDetail(postId, isPush = true) {
             <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
                 <h5>댓글 (${post.comments ? post.comments.length : 0})</h5>
                 <div id="b-comment-list" style="margin-bottom:20px;">
-                    ${post.comments && post.comments.length > 0 ? post.comments.map(c => `
-                        <div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:8px; font-size:13px;">
-                            <b>${c.user}</b>: ${c.text}
-                        </div>`).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
+                    ${post.comments && post.comments.length > 0 ? post.comments.map(c => {
+                        const userEsc = String(c.user).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        const dateEsc = String(c.date || '').replace(/'/g, "\\'");
+                        const pidEsc = String(post.id).replace(/'/g, "\\'");
+                        return `
+                        <div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:8px; font-size:13px; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                            <div style="flex:1;"><b>${c.user}</b>: ${c.text}</div>
+                            <span onclick="deleteBoardComment('${pidEsc}', '${userEsc}', '${dateEsc}')" style="font-size:10px; color:#bbb; cursor:pointer; text-decoration:underline; white-space:nowrap;">삭제</span>
+                        </div>`;
+                    }).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
                 </div>
 
                 <div style="background:#fffde7; padding:15px; border-radius:15px; border:1px solid #FFD400;">
@@ -349,6 +455,31 @@ async function submitBoardComment(postId) {
     }
 }
 
+// [신규] 수다방 댓글 삭제: 작성자 비번 입력 시 삭제
+async function deleteBoardComment(postId, originalUser, date) {
+    const pw = prompt(`[${originalUser}] 님이 작성한 댓글을 삭제하려면 비밀번호를 입력하세요.`);
+    if (!pw) return;
+
+    toggleLoading(true, "댓글 삭제 중...");
+    try {
+        const q = new URLSearchParams({ type: "delete_board_comment", post_id: postId, user: originalUser, pw: pw, date: date });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        if (result.res === "ok") {
+            alert("댓글이 삭제되었습니다.");
+            const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+            boardData = await refreshRes.json();
+            viewPostDetail(postId, false);
+        } else {
+            alert("오류: " + (result.msg || "삭제에 실패했습니다."));
+        }
+    } catch (e) {
+        alert("통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
+}
+
 // [수정] hidden 제거 시 display:flex 명시적으로 설정하여 CSS !important 충돌 해결
 function toggleLoading(show, msg = "데이터 저장 중...") {
     const modal = document.getElementById('saving-modal');
@@ -389,6 +520,7 @@ async function submitPost() {
             if (result.res === "ok") {
                 alert("등록 성공!");
                 localStorage.setItem('gj-nick', nickValue);
+                currentBoardPage = 1; // [추가] 새 글은 1페이지 맨 위에 오므로 1페이지로 이동
                 await refreshBoardData();
             } else { alert("실패: " + result.msg); }
         } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }

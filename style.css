@@ -151,3 +151,29 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 /* 게시글 카드 디자인 */
 .post-card { border-bottom: 1px solid #eee; padding: 15px 0; cursor: pointer; }
 .post-card:hover { background: #fffde7; }
+
+/* 수다방 페이지네이션 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    margin: 25px 0 40px;
+    flex-wrap: wrap;
+}
+.page-btn {
+    min-width: 36px;
+    height: 36px;
+    border: 1px solid #ddd;
+    background: #fff;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 0 10px;
+    transition: background 0.15s, border-color 0.15s;
+}
+.page-btn:hover:not(:disabled):not(.active) { background: #fffde7; border-color: #FFD400; }
+.page-btn.active { background: #FFD400; border-color: #000; color: #000; }
+.page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.page-ellipsis { color: #999; padding: 0 4px; font-size: 14px; }
