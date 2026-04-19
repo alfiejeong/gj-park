@@ -270,6 +270,10 @@ function doPost(e) {
     var imageUrl = "";
     if (postData.image_data && postData.image_data.length > 100) {
       imageUrl = saveFileToDrive(postData.image_data, "gj_img_" + new Date().getTime());
+    } else if (postData.image_url && /^https?:\/\//i.test(postData.image_url)) {
+      // [신규 2026-04-19] 외부 이미지 URL 프록시 저장
+      // ruliweb 등 핫링크 차단 호스트 대응: 서버가 fetch해서 Drive에 사본 생성 후 Drive URL 반환
+      imageUrl = saveUrlToDrive(postData.image_url, "gj_ext_" + new Date().getTime());
     }
 
     boardSheet.appendRow(["POST_" + new Date().getTime(), postData.user, postData.title, postData.content, imageUrl, "", new Date(), postData.pw]);
@@ -306,6 +310,39 @@ function saveFileToDrive(base64Data, fileName) {
     // 브라우저 호환성이 가장 좋고, 핫링크도 정상 동작.
     return "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w1000";
   } catch (e) { return ""; }
+}
+
+// [신규 2026-04-19] 외부 이미지 URL → 서버에서 fetch → Drive 저장 → Drive URL 반환
+// 용도: ruliweb 등 Referer 기반 핫링크 차단을 우회.
+// UrlFetchApp은 Google 서버에서 요청하므로 브라우저 Referer가 안 찍힘.
+function saveUrlToDrive(imageUrl, fileName) {
+  try {
+    var response = UrlFetchApp.fetch(imageUrl, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+      }
+    });
+    var code = response.getResponseCode();
+    if (code >= 400) {
+      console.warn("외부 이미지 fetch 실패 (code " + code + "): " + imageUrl);
+      return "";
+    }
+    var blob = response.getBlob();
+    var mime = blob.getContentType() || "image/jpeg";
+    var extMap = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif" };
+    var ext = extMap[mime] || "";
+    blob.setName(fileName + ext);
+    var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+    var file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w1000";
+  } catch (e) {
+    console.warn("saveUrlToDrive 예외: " + e.toString());
+    return "";
+  }
 }
 
 function handleFetch(p, mainSheet, commentSheet) {

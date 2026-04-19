@@ -25,7 +25,7 @@ var currentBoardPage = 1;      // [추가] 수다방 현재 페이지
 const POSTS_PER_PAGE = 10;     // [추가] 페이지당 게시글 수
 var userScores = {};           // [추가 - 단계 4-1] 닉네임 → 점수 맵 (뱃지 표시용)
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxSxWqxFzwhCZQY9D15RseTXtTLdhUFqSFE3zzca1fRGmC3mI13RBuO-bw5UutRNJF1/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFeSGHPeuOQqlFyYOEzofPQEVhuTI98Qcqd97VEpGWhqzpBaLstuXAxSfGFZCwUwUL/exec";
 
 async function preFetchData() {
     // [추가] 중복 호출 방어
@@ -254,18 +254,23 @@ async function reportBoardComment(postId, commentUser, commentDate) {
     }
 }
 
-// [추가 - webp 대응] 이미지 로드 실패 시 대체 URL로 재시도
-// drive.google.com/thumbnail 실패 → drive.google.com/uc?export=view 시도 → 그래도 실패하면 숨김
+// [추가 - webp/핫링크 대응] 이미지 로드 실패 시 대체 URL로 재시도
+// drive.google.com/thumbnail 실패 → drive.google.com/uc?export=view 재시도 → 그래도 실패하면 플레이스홀더로 교체
 function handleImgError(imgEl, originalUrl) {
-    if (!imgEl || imgEl.dataset.retried) { if (imgEl) imgEl.style.display = 'none'; return; }
-    imgEl.dataset.retried = '1';
-    // id 추출 시도
-    var idMatch = /[?&]id=([a-zA-Z0-9_-]+)/.exec(originalUrl);
-    if (idMatch) {
-        imgEl.src = 'https://drive.google.com/uc?export=view&id=' + idMatch[1];
-    } else {
-        imgEl.style.display = 'none';
+    if (!imgEl) return;
+    if (!imgEl.dataset.retried) {
+        imgEl.dataset.retried = '1';
+        var idMatch = /[?&]id=([a-zA-Z0-9_-]+)/.exec(originalUrl || '');
+        if (idMatch) {
+            imgEl.src = 'https://drive.google.com/uc?export=view&id=' + idMatch[1];
+            return;
+        }
     }
+    // 재시도도 실패 or Drive ID가 없는 외부 URL → 플레이스홀더로 교체
+    var placeholder = document.createElement('div');
+    placeholder.style.cssText = 'width:100%; padding:40px 15px; background:#f5f5f5; border:1px dashed #ccc; border-radius:10px; text-align:center; color:#999; font-size:13px; margin-bottom:15px;';
+    placeholder.innerHTML = '🖼️ 이미지를 불러올 수 없습니다<br><span style="font-size:11px; color:#bbb;">(외부 사이트의 핫링크 차단 등)</span>';
+    if (imgEl.parentNode) imgEl.parentNode.replaceChild(placeholder, imgEl);
 }
 
 // 다음 혜택 구간 계산
@@ -683,6 +688,9 @@ function showWriteForm() {
             </div>
             <textarea id="b-content" placeholder="내용" style="width:100%; height:150px; padding:10px; box-sizing:border-box;"></textarea>
             <input type="file" id="b-file" accept="image/*" style="width:100%; margin:15px 0;">
+            <!-- [신규 2026-04-19] 외부 이미지 URL (ruliweb 등 핫링크 차단 우회용 — 서버가 Drive로 복사) -->
+            <input type="text" id="b-img-url" placeholder="또는 이미지 URL 붙여넣기 (선택)" style="width:100%; padding:10px; margin-bottom:10px; box-sizing:border-box;">
+            <div style="font-size:11px; color:#888; margin-bottom:10px;">※ 파일 업로드가 있으면 URL은 무시됩니다. 외부 URL은 서버에서 받아 Drive로 자동 복사돼요.</div>
             <button onclick="submitPost()" class="btn-save" style="width:100%; padding:15px;">등록하기</button>
         </div>`;
     document.getElementById('write-btn').style.display = 'none';
@@ -715,7 +723,7 @@ function viewPostDetail(postId, isPush = true) {
             </div>
             <h2>${post.title}</h2>
             <div style="font-size:12px; color:#999; margin-bottom:15px;">작성자: ${post.author}${getBadgeForUser(post.author) ? ' ' + getBadgeForUser(post.author) : ''} | ${new Date(post.date).toLocaleString()}</div>
-            ${post.imageUrl ? `<img src="${post.imageUrl}" onerror="handleImgError(this, '${post.imageUrl}')" style="width:100%; border-radius:10px; margin-bottom:15px;">` : ""}
+            ${post.imageUrl ? `<img src="${post.imageUrl}" referrerpolicy="no-referrer" onerror="handleImgError(this, '${post.imageUrl}')" style="width:100%; border-radius:10px; margin-bottom:15px;">` : ""}
             <p style="white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
 
             <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
@@ -846,30 +854,44 @@ async function submitPost() {
     const pw = document.getElementById('b-pw').value;
     const content = document.getElementById('b-content').value;
     const fileEl = document.getElementById('b-file');
+    // [신규 2026-04-19] 외부 이미지 URL — 서버에서 Drive로 재호스팅
+    const imgUrlEl = document.getElementById('b-img-url');
+    const imgUrl = imgUrlEl ? imgUrlEl.value.trim() : '';
 
     if (!title || !nickValue || !pw || !content) return alert("모든 항목을 입력하세요!");
+    if (imgUrl && !/^https?:\/\//i.test(imgUrl)) return alert("이미지 URL은 http:// 또는 https://로 시작해야 합니다.");
 
     toggleLoading(true, "데이터 저장 중...");
-    const send = async (img) => {
+    // [수정] image_data(파일 업로드 base64) 또는 image_url(외부 링크) 중 하나를 백엔드로 전송.
+    const send = async (imgData, imgUrlStr) => {
         try {
             const res = await fetch(`${SCRIPT_URL}?type=add_post`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ user: nickValue, pw: pw, title: title, content: content, image_data: img })
+                body: JSON.stringify({
+                    user: nickValue, pw: pw, title: title, content: content,
+                    image_data: imgData || "",
+                    image_url: imgUrlStr || ""
+                })
             });
             const result = await res.json();
             if (result.res === "ok") {
                 alert("등록 성공!");
                 localStorage.setItem('gj-nick', nickValue);
-                currentBoardPage = 1; // [추가] 새 글은 1페이지 맨 위에 오므로 1페이지로 이동
+                currentBoardPage = 1;
                 await refreshBoardData();
             } else { alert("실패: " + result.msg); }
         } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
     };
 
     if (fileEl.files.length > 0) {
-        const r = new FileReader(); r.onload = () => send(r.result); r.readAsDataURL(fileEl.files[0]);
-    } else { send(""); }
+        // 파일이 있으면 URL은 무시 (파일 우선)
+        const r = new FileReader(); r.onload = () => send(r.result, ""); r.readAsDataURL(fileEl.files[0]);
+    } else if (imgUrl) {
+        send("", imgUrl);
+    } else {
+        send("", "");
+    }
 }
 
 async function refreshBoardData() {
