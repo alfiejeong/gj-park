@@ -26,12 +26,14 @@ function doGet(e) {
   // [신규 - 단계 4-3] 신고 시트: 3표(가중치 합 3) 이상이면 자동 숨김
   var boardReportsSheet = getOrCreateSheet(ss, "board_reports", ["게시글ID", "신고자", "신고자가중치", "신고일"]);
   var boardCmtReportsSheet = getOrCreateSheet(ss, "board_comment_reports", ["게시글ID", "댓글작성자", "댓글일시", "신고자", "신고자가중치", "신고일"]);
+  // [신규 2026-04-20] 단속 떴다 신고 시트 — 30분 내 신고만 인포윈도우에 표시. 랭킹엔 영구 반영(+2.5점)
+  var crackdownSheet = getOrCreateSheet(ss, "crackdown_reports", ["대상ID", "작성자", "신고일", "비번"]);
 
   try {
     if (p.type === "get_board") return handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet);
 
-    // [신규 - 단계 2] 랭킹 조회
-    if (p.type === "get_ranking") return handleRanking(mainSheet, commentSheet);
+    // [신규 - 단계 2] 랭킹 조회 (+ 단속 신고 점수 합산)
+    if (p.type === "get_ranking") return handleRanking(mainSheet, commentSheet, crackdownSheet);
 
     if (p.type === "add_board_comment") {
       if (!checkUser(userSheet, p.user, p.pw)) {
@@ -85,6 +87,32 @@ function doGet(e) {
         commentSheet.appendRow([targetId, p.user, p.comment, p.rating, new Date()]);
       }
       return createResponse({res: "ok", updated: updated});
+    }
+
+    // [신규 2026-04-20] 단속 떴다 신고 — 후기와 별개로 30분간 활성 경고 표출. 점수 +2.5.
+    if (p.type === "add_crackdown") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var cdTargetId = String(p.target_id).trim();
+      if (!cdTargetId) return createResponse({res: "error", msg: "대상 주차장이 지정되지 않았습니다."});
+
+      // 30분 내 동일 유저 중복 신고 방지 (어뷰징 방지)
+      var cdNow = new Date().getTime();
+      var CD_WINDOW = 30 * 60 * 1000;
+      var cdRows = crackdownSheet.getDataRange().getValues();
+      for (var ci2 = 1; ci2 < cdRows.length; ci2++) {
+        if (String(cdRows[ci2][0]).trim() === cdTargetId
+            && String(cdRows[ci2][1]) === String(p.user)) {
+          var cdAt = cdRows[ci2][2] instanceof Date ? cdRows[ci2][2].getTime() : new Date(cdRows[ci2][2]).getTime();
+          if (cdNow - cdAt < CD_WINDOW) {
+            return createResponse({res: "error", msg: "이미 최근 30분 내에 이 장소를 단속 신고하셨습니다."});
+          }
+        }
+      }
+
+      crackdownSheet.appendRow([cdTargetId, p.user, new Date(), p.pw]);
+      return createResponse({res: "ok"});
     }
 
     if (p.type === "delete_comment") {
@@ -261,7 +289,7 @@ function doGet(e) {
       return createResponse({res: "error", msg: "비밀번호 불일치"});
     }
 
-    return handleFetch(p, mainSheet, commentSheet);
+    return handleFetch(p, mainSheet, commentSheet, crackdownSheet);
   } catch (err) { return createResponse({res: "error", msg: err.toString()}); }
 }
 
@@ -370,8 +398,27 @@ function saveUrlToDrive(imageUrl, fileName) {
   }
 }
 
-function handleFetch(p, mainSheet, commentSheet) {
+function handleFetch(p, mainSheet, commentSheet, crackdownSheet) {
   try {
+    // [신규 2026-04-20] 30분 내 활성 단속 신고 맵 (장소명 → {reportedAt, user})
+    var CD_WINDOW = 30 * 60 * 1000;
+    var nowMs = new Date().getTime();
+    var activeCrackdowns = {};
+    if (crackdownSheet) {
+      var cdRows = crackdownSheet.getDataRange().getValues();
+      for (var ci3 = 1; ci3 < cdRows.length; ci3++) {
+        var target = String(cdRows[ci3][0]).trim();
+        var at = cdRows[ci3][2] instanceof Date ? cdRows[ci3][2].getTime() : new Date(cdRows[ci3][2]).getTime();
+        if (isNaN(at)) continue;
+        if (nowMs - at < CD_WINDOW) {
+          // 가장 최근 신고로 덮어씀 (만료 시점 계산 기준)
+          if (!activeCrackdowns[target] || activeCrackdowns[target].at < at) {
+            activeCrackdowns[target] = { at: at, user: String(cdRows[ci3][1]) };
+          }
+        }
+      }
+    }
+
     // [수정] 서울시 API: HTTP → HTTPS, 응답 구조 안전 체크 추가
     if (p.type === "seoul") {
       var url = "https://openapi.seoul.go.kr:8088/7353726f51616c663130305873426c73/json/GetParkInfo/1/1000/";
@@ -389,12 +436,18 @@ function handleFetch(p, mainSheet, commentSheet) {
         return createResponse(rows.filter(function(r) {
           return (r.PAY_YN === "N" || r.CHGD_FREE_NM === "무료") && r.LAT;
         }).map(function(r) {
+          var nm = String(r.PKLT_NM || '').trim();
+          var cdInfo = activeCrackdowns[nm];
           return {
             name: r.PKLT_NM, address: r.ADDR,
             lat: parseFloat(r.LAT), lng: parseFloat(r.LOT),
             type: "무료", user: "서울시", desc: "공공데이터",
             imageUrl: "", // [추가 2026-04-20] 공공데이터엔 이미지 없음 (프론트에서 기본 P 이미지로 대체)
-            avgRating: "5.0", comments: []
+            avgRating: "5.0", comments: [],
+            // [신규 2026-04-20] 단속 떴다 상태 — 30분 내 신고 여부
+            crackdownActive: !!cdInfo,
+            crackdownAt: cdInfo ? new Date(cdInfo.at).toISOString() : null,
+            crackdownBy: cdInfo ? cdInfo.user : null
           };
         }));
       } catch (seoulErr) {
@@ -420,11 +473,17 @@ function handleFetch(p, mainSheet, commentSheet) {
       });
       var avg = matchedComments.length > 0 ? (totalRate / matchedComments.length).toFixed(1) : "0.0";
 
+      // [신규 2026-04-20] 활성 단속 정보 주입
+      var cdInfo = activeCrackdowns[placeName];
+
       return {
         user: r[0], name: r[1], type: r[2], address: r[3], desc: r[4],
         lat: parseFloat(r[5]), lng: parseFloat(r[6]),
         imageUrl: r[9] || "", // [추가 2026-04-20] 주차 이미지 (컬럼 J). 없으면 빈 문자열 → 프론트에서 기본 이미지 표시
-        avgRating: avg, comments: cList
+        avgRating: avg, comments: cList,
+        crackdownActive: !!cdInfo,
+        crackdownAt: cdInfo ? new Date(cdInfo.at).toISOString() : null,
+        crackdownBy: cdInfo ? cdInfo.user : null
       };
     });
 
@@ -495,7 +554,7 @@ function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boar
 }
 
 // [신규 - 단계 4-3] 유저 점수 계산 (신고 권한/가중치 판정용)
-// 공식: (제보 수 × 5) + (받은 별점 합계), 자기 후기 제외
+// 공식: (제보 수 × 5) + (받은 별점 합계) + (단속 신고 × 2.5), 자기 후기 제외
 function getUserScore(user, mainSheet, commentSheet) {
   if (!user) return 0;
   var mainRows = mainSheet.getDataRange().getValues();
@@ -518,19 +577,42 @@ function getUserScore(user, mainSheet, commentSheet) {
     if (reviewer === String(user)) continue; // 자기 후기 제외
     reviewSum += parseFloat(cmtRows[j][3] || 0);
   }
-  return (reportCount * 5) + reviewSum;
+
+  // [신규 2026-04-20] 단속 신고 점수 (+2.5 per)
+  var crackdownCount = 0;
+  try {
+    var cdSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("crackdown_reports");
+    if (cdSheet) {
+      var cdRows = cdSheet.getDataRange().getValues();
+      for (var k = 1; k < cdRows.length; k++) {
+        if (String(cdRows[k][1]) === String(user)) crackdownCount++;
+      }
+    }
+  } catch (e) { /* 시트 없으면 0 */ }
+
+  return (reportCount * 5) + reviewSum + (crackdownCount * 2.5);
 }
 
 // [신규 - 단계 2] 랭킹 계산
-// 점수 공식: (제보 수 × 5) + (내 제보에 받은 별점 합계) — 자기 후기는 제외
+// 점수 공식: (제보 수 × 5) + (내 제보에 받은 별점 합계) + (단속 신고 × 2.5) — 자기 후기는 제외
 // 정렬: 점수 desc → 제보 수 desc → 첫 제보일 asc
-function handleRanking(mainSheet, commentSheet) {
+function handleRanking(mainSheet, commentSheet, crackdownSheet) {
   try {
     var mainRows = mainSheet.getDataRange().getValues();
     var cmtRows = commentSheet.getDataRange().getValues();
 
     var userStats = {};
     var placeToAuthor = {}; // 제보 장소명 → 제보자 아이디
+
+    function ensureUser(u) {
+      if (!userStats[u]) {
+        userStats[u] = {
+          user: u, reportCount: 0, reviewCount: 0, reviewSum: 0,
+          crackdownCount: 0, firstReportDate: null
+        };
+      }
+      return userStats[u];
+    }
 
     // 제보 집계
     for (var i = 1; i < mainRows.length; i++) {
@@ -541,16 +623,12 @@ function handleRanking(mainSheet, commentSheet) {
       var placeName = String(mainRows[i][1]).trim();
       var reportDate = mainRows[i][7];
 
-      if (!userStats[u]) {
-        userStats[u] = {
-          user: u, reportCount: 0, reviewCount: 0, reviewSum: 0, firstReportDate: null
-        };
-      }
-      userStats[u].reportCount += 1;
+      var s1 = ensureUser(u);
+      s1.reportCount += 1;
       if (reportDate) {
         var rd = reportDate instanceof Date ? reportDate.getTime() : new Date(reportDate).getTime();
-        if (!userStats[u].firstReportDate || rd < userStats[u].firstReportDate) {
-          userStats[u].firstReportDate = rd;
+        if (!s1.firstReportDate || rd < s1.firstReportDate) {
+          s1.firstReportDate = rd;
         }
       }
       // 동일 장소명이 여러 제보에 있으면 마지막 것으로 덮어씀 (실질 영향 미미)
@@ -570,10 +648,21 @@ function handleRanking(mainSheet, commentSheet) {
       userStats[author].reviewSum += rating;
     }
 
+    // [신규 2026-04-20] 단속 신고 집계 (+2.5점 per). 운영자 계정 제외.
+    if (crackdownSheet) {
+      var cdRows2 = crackdownSheet.getDataRange().getValues();
+      for (var k = 1; k < cdRows2.length; k++) {
+        var reporter = String(cdRows2[k][1]);
+        if (!reporter) continue;
+        if (OPERATOR_NICKS.indexOf(reporter) !== -1) continue;
+        ensureUser(reporter).crackdownCount += 1;
+      }
+    }
+
     // 점수 계산 및 배열화
     var users = Object.keys(userStats).map(function(u) {
       var s = userStats[u];
-      s.score = (s.reportCount * 5) + s.reviewSum;
+      s.score = (s.reportCount * 5) + s.reviewSum + ((s.crackdownCount || 0) * 2.5);
       s.avgRating = s.reviewCount > 0 ? (s.reviewSum / s.reviewCount).toFixed(1) : "0.0";
       return s;
     });
