@@ -24,8 +24,21 @@ var boardData = [];
 var currentBoardPage = 1;      // [추가] 수다방 현재 페이지
 const POSTS_PER_PAGE = 10;     // [추가] 페이지당 게시글 수
 var userScores = {};           // [추가 - 단계 4-1] 닉네임 → 점수 맵 (뱃지 표시용)
+var currentUserPos = null;     // [신규 2026-04-20] 현재 위치 (가까운 주차 위젯용)
+var boardSearchTerm = '';      // [신규 2026-04-20] 수다방 검색어 (제목·본문·작성자 필터)
+var boardSearchDebounceId = null;
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFeSGHPeuOQqlFyYOEzofPQEVhuTI98Qcqd97VEpGWhqzpBaLstuXAxSfGFZCwUwUL/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwsfsJDWPppcA5VfMs4xmp5W2tz9OG4z4unhB09YDz-eSNLoXDzmG6Na_oJ-tk36B0/exec";
+
+// [신규 2026-04-20] 주차장 기본 이미지 (인라인 SVG 데이터 URI) — 업로드된 이미지가 없거나 로드 실패 시 대체용
+const DEFAULT_PARKING_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 200'>"
+    + "<rect width='400' height='200' fill='#FFD400'/>"
+    + "<circle cx='200' cy='95' r='50' fill='#fff' stroke='#000' stroke-width='4'/>"
+    + "<text x='200' y='118' text-anchor='middle' font-size='70' font-weight='900' font-family='sans-serif' fill='#000'>P</text>"
+    + "<text x='200' y='175' text-anchor='middle' font-size='14' font-family='sans-serif' fill='#333'>거지주차.com</text>"
+    + "</svg>"
+);
 
 async function preFetchData() {
     // [추가] 중복 호출 방어
@@ -72,6 +85,10 @@ async function preFetchData() {
         if (map) renderAllMarkers();
         if (!document.getElementById('board-page').classList.contains('hidden')) renderBoard();
 
+        // [신규 2026-04-20] 지도 플로팅 위젯 렌더 (데이터 수급 완료 후)
+        renderNearbyWidget();
+        renderRecentBoardWidget();
+
     } catch (e) {
         console.error("통합 수급 프로세스 치명적 에러:", e);
         isDataLoaded = true; // 에러여도 스플래시는 닫혀야 함
@@ -89,6 +106,8 @@ async function fetchBoard() {
         if (Array.isArray(data)) {
             boardData = data;
             renderBoard();
+            // [신규 2026-04-20] 우측 위젯도 최신 목록으로 갱신
+            if (typeof renderRecentBoardWidget === 'function') renderRecentBoardWidget();
         }
     } catch (e) {
         console.error("수다방 데이터 로드 실패:", e);
@@ -289,6 +308,8 @@ async function openRanking() {
     const rankingPage = document.getElementById('ranking-page');
     rankingPage.classList.remove('hidden');
     document.getElementById('floating-menu').style.display = 'none';
+    // [신규 2026-04-20] 랭킹 페이지 열릴 땐 지도 위젯 가리기
+    hideMapWidgets();
     history.pushState({ view: 'ranking' }, "랭킹", "#ranking");
 
     const content = document.getElementById('ranking-content');
@@ -382,6 +403,8 @@ function renderRanking() {
 function closeRanking() {
     document.getElementById('ranking-page').classList.add('hidden');
     document.getElementById('floating-menu').style.display = 'flex';
+    // [신규 2026-04-20] 지도 위젯 복귀
+    showMapWidgets();
     if (window.location.hash === '#ranking') history.replaceState(null, "", window.location.pathname);
 }
 
@@ -389,8 +412,135 @@ function closeRanking() {
 function initMap() {
     if (typeof naver === 'undefined') return setTimeout(initMap, 100);
     navigator.geolocation.getCurrentPosition((pos) => {
+        // [신규 2026-04-20] 현재 위치 저장 — 가까운 주차 위젯 계산용
+        currentUserPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setupMap(pos.coords.latitude, pos.coords.longitude);
+        renderNearbyWidget();
     }, () => { setupMap(37.5665, 126.9780); }, { timeout: 3000 });
+}
+
+// [신규 2026-04-20] 두 좌표간 거리 (km) — Haversine 공식
+function haversineDistance(lat1, lng1, lat2, lng2) {
+    if (isNaN(lat1) || isNaN(lng1) || isNaN(lat2) || isNaN(lng2)) return NaN;
+    const R = 6371; // 지구 반경 km
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2
+            + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistance(km) {
+    if (isNaN(km)) return '';
+    if (km < 1) return Math.round(km * 1000) + 'm';
+    if (km < 10) return km.toFixed(1) + 'km';
+    return Math.round(km) + 'km';
+}
+
+// [신규 2026-04-20] 좌측 위젯: 현재 위치 기준 가까운 주차 5곳
+function renderNearbyWidget() {
+    const widget = document.getElementById('nearby-widget');
+    const list = document.getElementById('nearby-list');
+    if (!widget || !list) return;
+
+    if (!currentUserPos) {
+        list.innerHTML = `<div class="widget-empty">위치 권한이 필요해요</div>`;
+        widget.classList.remove('hidden');
+        return;
+    }
+    if (!preloadedData || preloadedData.length === 0) {
+        list.innerHTML = `<div class="widget-empty">주차 정보 로드 중...</div>`;
+        widget.classList.remove('hidden');
+        return;
+    }
+
+    const withDistance = preloadedData
+        .map(it => ({
+            it: it,
+            d: haversineDistance(currentUserPos.lat, currentUserPos.lng, it.lat, it.lng)
+        }))
+        .filter(x => !isNaN(x.d))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 5);
+
+    if (withDistance.length === 0) {
+        list.innerHTML = `<div class="widget-empty">주변에 주차 정보가 없어요</div>`;
+    } else {
+        list.innerHTML = withDistance.map(({ it, d }) => {
+            const nameEsc = String(it.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            return `
+            <div class="widget-item" onclick="panToSpot(${it.lat}, ${it.lng}, '${nameEsc}')">
+                <div class="widget-item-title">${it.name || '이름 없음'}</div>
+                <div class="widget-item-meta">${it.type || ''} · ${formatDistance(d)}</div>
+            </div>`;
+        }).join('');
+    }
+    widget.classList.remove('hidden');
+}
+
+function panToSpot(lat, lng, name) {
+    if (!map) return;
+    map.panTo(new naver.maps.LatLng(lat, lng));
+    map.setZoom(17);
+}
+
+// [신규 2026-04-20] 우측 위젯: 최근 수다방 글 5개 (클릭 시 해당 글로 이동)
+function renderRecentBoardWidget() {
+    const widget = document.getElementById('recent-board-widget');
+    const list = document.getElementById('recent-board-list');
+    if (!widget || !list) return;
+
+    if (!boardData || boardData.length === 0) {
+        list.innerHTML = `<div class="widget-empty">아직 글이 없어요</div>`;
+        widget.classList.remove('hidden');
+        return;
+    }
+
+    const recent = boardData.slice(0, 5);
+    list.innerHTML = recent.map(p => {
+        const pidEsc = String(p.id || '').replace(/'/g, "\\'");
+        const title = String(p.title || '(제목 없음)');
+        const badge = getBadgeForUser(p.author);
+        return `
+        <div class="widget-item" onclick="openBoardAtPost('${pidEsc}')">
+            <div class="widget-item-title">${title}</div>
+            <div class="widget-item-meta">${p.author || '익명'}${badge ? ' ' + badge : ''}</div>
+        </div>`;
+    }).join('');
+    widget.classList.remove('hidden');
+}
+
+// [신규 2026-04-20] 우측 위젯에서 글 클릭 → 수다방 열고 해당 글 상세로 이동
+function openBoardAtPost(postId) {
+    const boardPage = document.getElementById('board-page');
+    if (!boardPage) return;
+    boardPage.classList.remove('hidden');
+    document.getElementById('floating-menu').style.display = 'none';
+    history.pushState({ view: 'board' }, "수다방", "#board");
+    // 상세로 push
+    setTimeout(() => viewPostDetail(postId, true), 80);
+    // 백그라운드로 최신화
+    fetchBoard();
+}
+
+// [신규 2026-04-20] 위젯 접기/펴기 토글
+function toggleWidget(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('collapsed');
+}
+
+// [신규 2026-04-20] 지도 위젯 보이기/숨기기 (수다방·랭킹 페이지 이동 시)
+function hideMapWidgets() {
+    ['nearby-widget', 'recent-board-widget'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
+}
+function showMapWidgets() {
+    // 데이터가 준비됐을 때만 다시 노출
+    if (currentUserPos || (preloadedData && preloadedData.length > 0)) renderNearbyWidget();
+    if (boardData && boardData.length > 0) renderRecentBoardWidget();
 }
 
 function setupMap(lat, lng) {
@@ -466,6 +616,16 @@ function attachInfoWindow(marker, item) {
         </div>`;
     }).join('') : "<div style='font-size:11px; color:#999; text-align:center; padding:15px;'>등록된 후기가 없습니다.</div>";
 
+    // [신규 2026-04-20] 주차 이미지 — 서버가 준 imageUrl, 없으면 기본 P 이미지. 로드 실패 시 기본 이미지로 폴백.
+    const imgSrc = item.imageUrl || DEFAULT_PARKING_IMG;
+    const defaultImgAttr = DEFAULT_PARKING_IMG.replace(/"/g, '&quot;');
+    const imageHtml = `
+        <div style="width:100%; margin-bottom:10px;">
+            <img src="${imgSrc}" referrerpolicy="no-referrer"
+                 onerror="this.onerror=null; this.src='${defaultImgAttr}';"
+                 style="width:100%; height:110px; object-fit:cover; border-radius:10px; border:1px solid #eee; display:block;">
+        </div>`;
+
     const contentHtml = `
         <div class="custom-info-window">
             <div class="title-wrap" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -473,9 +633,16 @@ function attachInfoWindow(marker, item) {
                 <span style="color:#f39c12; font-weight:bold; font-size:14px;">⭐ ${item.avgRating || '0.0'}</span>
             </div>
 
+            ${imageHtml}
+
             <div class="info-grid">
                 <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
                 <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}${getBadgeForUser(item.user) ? ' ' + getBadgeForUser(item.user) : ''}</span></div>
+                <!-- [신규 2026-04-20] 주소 표시: 기존엔 address 필드를 쓰지 않아 UI에서 누락됨 -->
+                <div class="info-full" style="background:#fffbe6; padding:8px; border-radius:10px; margin:3px 0;">
+                    <span class="info-label">주소</span><br>
+                    <span class="info-value" style="font-size:12px; word-break:break-all;">${item.address || "주소 정보 없음"}</span>
+                </div>
                 <div class="info-full" style="background:#f9f9f9; padding:8px; border-radius:10px; margin:5px 0;">
                     <span class="info-label">상세내용</span><br>
                     <span class="info-value" style="white-space:pre-wrap; font-size:12px;">${item.desc || "상세내용 없음"}</span>
@@ -585,6 +752,8 @@ function openBoard() {
     const boardPage = document.getElementById('board-page');
     boardPage.classList.remove('hidden');
     document.getElementById('floating-menu').style.display = 'none';
+    // [신규 2026-04-20] 수다방 열릴 땐 지도 위젯 가리기
+    hideMapWidgets();
 
     history.pushState({ view: 'board' }, "수다방", "#board");
 
@@ -603,26 +772,56 @@ function openBoard() {
 function closeBoard() {
     document.getElementById('board-page').classList.add('hidden');
     document.getElementById('floating-menu').style.display = 'flex';
+    // [신규 2026-04-20] 수다방 닫을 때 검색어 초기화 (다음 진입 시 깨끗한 상태)
+    boardSearchTerm = '';
+    // [신규 2026-04-20] 지도 위젯 복귀
+    showMapWidgets();
     if (window.location.hash) history.replaceState(null, "", window.location.pathname);
 }
 
 function renderBoard() {
     const content = document.getElementById('board-content');
     document.getElementById('write-btn').style.display = 'block';
+
+    // [신규 2026-04-20] 검색 바 — 항상 상단에 고정 노출. 입력 커서 복원 위해 innerHTML 재구성 후 focus 복구.
+    const safeTerm = String(boardSearchTerm || '').replace(/"/g, '&quot;');
+    const searchBarHtml = `
+        <div class="board-search">
+            <input type="text" id="board-search-input" placeholder="🔍 제목·본문·작성자 검색" value="${safeTerm}" oninput="onBoardSearch(this.value)">
+            ${boardSearchTerm ? `<button class="board-search-clear" onclick="clearBoardSearch()" title="검색 지우기">×</button>` : ''}
+        </div>`;
+
+    // 검색어 기반 필터링 (없으면 전체)
+    let filtered = boardData;
+    if (boardSearchTerm) {
+        const q = boardSearchTerm.toLowerCase();
+        filtered = boardData.filter(p =>
+            String(p.title || '').toLowerCase().includes(q)
+            || String(p.content || '').toLowerCase().includes(q)
+            || String(p.author || '').toLowerCase().includes(q)
+        );
+    }
+
     if (boardData.length === 0) {
-        content.innerHTML = `<div style="text-align:center; color:#999; padding:40px; font-size:14px;">아직 수다가 없어요. 첫 글을 남겨보세요! 🙌</div>`;
+        content.innerHTML = searchBarHtml + `<div style="text-align:center; color:#999; padding:40px; font-size:14px;">아직 수다가 없어요. 첫 글을 남겨보세요! 🙌</div>`;
+        restoreBoardSearchFocus();
+        return;
+    }
+    if (filtered.length === 0) {
+        content.innerHTML = searchBarHtml + `<div style="text-align:center; color:#999; padding:40px; font-size:14px;">"${boardSearchTerm}"에 해당하는 글이 없어요.</div>`;
+        restoreBoardSearchFocus();
         return;
     }
 
-    // [추가] 페이지네이션 계산
-    const total = boardData.length;
+    // [추가] 페이지네이션 계산 (필터 후 기준)
+    const total = filtered.length;
     const totalPages = Math.max(1, Math.ceil(total / POSTS_PER_PAGE));
     if (currentBoardPage > totalPages) currentBoardPage = totalPages;
     if (currentBoardPage < 1) currentBoardPage = 1;
 
     const startIdx = (currentBoardPage - 1) * POSTS_PER_PAGE;
     const endIdx = startIdx + POSTS_PER_PAGE;
-    const pageData = boardData.slice(startIdx, endIdx);
+    const pageData = filtered.slice(startIdx, endIdx);
 
     const postListHtml = pageData.map(p => {
         const pidEsc = String(p.id).replace(/'/g, "\\'");
@@ -637,7 +836,38 @@ function renderBoard() {
 
     const paginationHtml = renderPagination(currentBoardPage, totalPages);
 
-    content.innerHTML = `<div id="post-list">${postListHtml}</div>${paginationHtml}`;
+    content.innerHTML = searchBarHtml + `<div id="post-list">${postListHtml}</div>${paginationHtml}`;
+    restoreBoardSearchFocus();
+}
+
+// [신규 2026-04-20] 검색 입력 핸들러 — 250ms 디바운스로 타이핑 중 과도한 리렌더 방지
+function onBoardSearch(v) {
+    boardSearchTerm = v;
+    _boardSearchWasFocused = true; // 리렌더 후 포커스 복원
+    clearTimeout(boardSearchDebounceId);
+    boardSearchDebounceId = setTimeout(() => {
+        currentBoardPage = 1;
+        renderBoard();
+    }, 250);
+}
+
+function clearBoardSearch() {
+    boardSearchTerm = '';
+    currentBoardPage = 1;
+    renderBoard();
+}
+
+// innerHTML 재구성 후 focus 복원 — 사용자가 검색 중일 때만 복원 (초기 진입 시엔 포커스 주지 않음)
+var _boardSearchWasFocused = false;
+function restoreBoardSearchFocus() {
+    const input = document.getElementById('board-search-input');
+    if (!input) return;
+    if (_boardSearchWasFocused) {
+        input.focus();
+        const len = input.value.length;
+        try { input.setSelectionRange(len, len); } catch (e) {}
+        _boardSearchWasFocused = false;
+    }
 }
 
 // [신규] 페이지 번호 UI 생성 (현재 페이지 기준 앞뒤 2개씩 + 처음/끝)
@@ -723,8 +953,9 @@ function viewPostDetail(postId, isPush = true) {
             </div>
             <h2>${post.title}</h2>
             <div style="font-size:12px; color:#999; margin-bottom:15px;">작성자: ${post.author}${getBadgeForUser(post.author) ? ' ' + getBadgeForUser(post.author) : ''} | ${new Date(post.date).toLocaleString()}</div>
-            ${post.imageUrl ? `<img src="${post.imageUrl}" referrerpolicy="no-referrer" onerror="handleImgError(this, '${post.imageUrl}')" style="width:100%; border-radius:10px; margin-bottom:15px;">` : ""}
-            <p style="white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
+            ${post.imageUrl ? `<img src="${post.imageUrl}" referrerpolicy="no-referrer" onerror="handleImgError(this, '${post.imageUrl}')" style="width:100%; max-width:100%; border-radius:10px; margin-bottom:15px;">` : ""}
+            <!-- [수정 2026-04-20] 원문 링크가 길면 컨테이너 넘쳐서 가로 스크롤 생겼음. word-break + overflow-wrap으로 줄바꿈 강제 -->
+            <p style="white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere; margin-bottom:30px;">${post.content}</p>
 
             <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
                 <h5>댓글 (${post.comments ? post.comments.length : 0})</h5>
@@ -758,14 +989,15 @@ function viewPostDetail(postId, isPush = true) {
                     }).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
                 </div>
 
-                <div style="background:#fffde7; padding:15px; border-radius:15px; border:1px solid #FFD400;">
+                <!-- [수정 2026-04-20] 댓글 입력 영역 넘침 해결: flex:1 1 0 + min-width:0 + width:0 로 input 기본 너비 무력화 -->
+                <div style="background:#fffde7; padding:15px; border-radius:15px; border:1px solid #FFD400; box-sizing:border-box; max-width:100%;">
                     <div style="display:flex; gap:5px; margin-bottom:10px;">
-                        <input type="text" id="bc-nick-${post.id}" value="${nick}" placeholder="닉네임" style="flex:1.5; padding:10px; border-radius:8px; border:1px solid #ddd;">
-                        <input type="password" id="bc-pw-${post.id}" placeholder="비번" style="flex:1; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                        <input type="text" id="bc-nick-${post.id}" value="${nick}" placeholder="닉네임" style="flex:1.5 1 0; min-width:0; width:0; padding:10px; border-radius:8px; border:1px solid #ddd; box-sizing:border-box;">
+                        <input type="password" id="bc-pw-${post.id}" placeholder="비번" style="flex:1 1 0; min-width:0; width:0; padding:10px; border-radius:8px; border:1px solid #ddd; box-sizing:border-box;">
                     </div>
                     <div style="display:flex; gap:5px;">
-                        <input type="text" id="bc-msg-${post.id}" placeholder="댓글 내용을 입력하세요" style="flex:1; padding:10px; border-radius:8px; border:1px solid #ddd;">
-                        <button onclick="submitBoardComment('${post.id}')" style="background:#FFD400; border:none; border-radius:8px; padding:0 15px; font-weight:bold; cursor:pointer;">등록</button>
+                        <input type="text" id="bc-msg-${post.id}" placeholder="댓글 내용을 입력하세요" style="flex:1 1 0; min-width:0; width:0; padding:10px; border-radius:8px; border:1px solid #ddd; box-sizing:border-box;">
+                        <button onclick="submitBoardComment('${post.id}')" style="flex:0 0 auto; background:#FFD400; border:none; border-radius:8px; padding:0 15px; font-weight:bold; cursor:pointer; white-space:nowrap;">등록</button>
                     </div>
                 </div>
             </div>
@@ -908,28 +1140,55 @@ async function refreshBoardData() {
 }
 
 async function submitReport() {
-    const nick = document.getElementById('nick').value;
+    const nick = document.getElementById('nick').value.trim();
     const pw = document.getElementById('p-pw').value;
-    const name = document.getElementById('pname').value;
+    const name = document.getElementById('pname').value.trim();
     const type = document.getElementById('ptype').value;
     const desc = document.getElementById('pdesc').value;
+    // [신규 2026-04-20] 주차장 사진 업로드 지원 (파일 또는 URL)
+    const fileEl = document.getElementById('p-file');
+    const imgUrlEl = document.getElementById('p-img-url');
+    const imgUrl = imgUrlEl ? imgUrlEl.value.trim() : '';
 
     if (!nick || !pw || !name) return alert("닉네임, 비번, 장소명은 필수입니다!");
-
-    // [추가] pickMarker null 체크
     if (!pickMarker) return alert("지도를 클릭하여 위치를 먼저 선택해주세요!");
+    if (imgUrl && !/^https?:\/\//i.test(imgUrl)) return alert("이미지 URL은 http:// 또는 https://로 시작해야 합니다.");
 
-    toggleLoading(true);
-    try {
-        const q = new URLSearchParams({ type: "report", user: nick, pw: pw, name: name, ptype: type, addr: addrStr, desc: desc, lat: pickMarker.getPosition().lat(), lng: pickMarker.getPosition().lng() });
-        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
-        const result = await res.json();
-        if (result.res === "ok") {
-            alert("제보 완료!");
-            localStorage.setItem('gj-nick', nick); // [추가] 닉네임 저장 일관성
-            location.reload();
-        } else { alert("오류: " + result.msg); }
-    } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
+    toggleLoading(true, "제보 등록 중...");
+    // [수정 2026-04-20] GET → POST 전환: base64 이미지 용량 때문에 URL 쿼리스트링은 한계.
+    // 서버는 동일 엔드포인트에서 body.type === "report"로 라우팅.
+    const send = async (imgData) => {
+        try {
+            const res = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    type: "report",
+                    user: nick, pw: pw,
+                    name: name, ptype: type, addr: addrStr, desc: desc,
+                    lat: pickMarker.getPosition().lat(),
+                    lng: pickMarker.getPosition().lng(),
+                    image_data: imgData || "",
+                    image_url: imgUrl || ""
+                })
+            });
+            const result = await res.json();
+            if (result.res === "ok") {
+                alert("제보 완료!");
+                localStorage.setItem('gj-nick', nick);
+                location.reload();
+            } else { alert("오류: " + result.msg); }
+        } catch (e) { alert("연결 오류"); } finally { toggleLoading(false); }
+    };
+
+    if (fileEl && fileEl.files && fileEl.files.length > 0) {
+        // 파일 우선. URL은 서버에서 무시됨.
+        const r = new FileReader();
+        r.onload = () => send(r.result);
+        r.readAsDataURL(fileEl.files[0]);
+    } else {
+        send("");
+    }
 }
 
 async function deleteReport(name, lat, lng) {
@@ -975,7 +1234,10 @@ function setupEvents() {
 
 function moveToMyLoc() {
     navigator.geolocation.getCurrentPosition((pos) => {
+        // [수정 2026-04-20] 현재 위치 업데이트 + 가까운 주차 위젯 재계산
+        currentUserPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
+        renderNearbyWidget();
     });
 }
 

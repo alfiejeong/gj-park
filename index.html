@@ -54,6 +54,24 @@
 
     <div id="map"></div>
 
+    <!-- [신규 2026-04-20] 좌측 플로팅 위젯 — 현재 위치 기준 가까운 주차 5곳 -->
+    <div id="nearby-widget" class="map-widget map-widget-left hidden">
+        <div class="map-widget-header" onclick="toggleWidget('nearby-widget')">
+            <span>📍 가까운 주차</span>
+            <span class="map-widget-chevron">▾</span>
+        </div>
+        <div id="nearby-list" class="map-widget-body"></div>
+    </div>
+
+    <!-- [신규 2026-04-20] 우측 플로팅 위젯 — 최근 수다방 5개 -->
+    <div id="recent-board-widget" class="map-widget map-widget-right hidden">
+        <div class="map-widget-header" onclick="toggleWidget('recent-board-widget')">
+            <span>💬 최근 수다</span>
+            <span class="map-widget-chevron">▾</span>
+        </div>
+        <div id="recent-board-list" class="map-widget-body"></div>
+    </div>
+
     <div id="floating-menu">
         <button onclick="moveToMyLoc()" class="f-btn">📍 내위치</button>
         <button onclick="openModal()" class="f-btn primary">📢 제보하기</button>
@@ -78,6 +96,10 @@
                 <option value="회차 무료">회차 무료</option>
             </select>
             <textarea id="pdesc" placeholder="상세내용(주차 꿀팁 등)을 입력하세요"></textarea>
+            <!-- [신규 2026-04-20] 주차장 사진 업로드 (파일 또는 URL). 없으면 기본 'P' 이미지가 자동 적용됨 -->
+            <input type="file" id="p-file" accept="image/*">
+            <input type="text" id="p-img-url" placeholder="또는 이미지 URL (선택)">
+            <div style="font-size:11px; color:#888; margin:-2px 0 8px;">※ 파일이 있으면 URL은 무시됩니다. 사진이 없으면 기본 이미지가 표시돼요.</div>
             <div class="modal-btns">
                 <button onclick="submitReport()" class="btn-save">정보 저장</button>
                 <button onclick="closeModal()" class="btn-cancel">닫기</button>

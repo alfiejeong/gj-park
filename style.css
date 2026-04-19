@@ -152,6 +152,112 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 .post-card { border-bottom: 1px solid #eee; padding: 15px 0; cursor: pointer; }
 .post-card:hover { background: #fffde7; }
 
+/* [신규 2026-04-20] 수다방 글 상세 — 긴 URL이 컨테이너를 뚫고 나오는 문제 방지.
+   원문 링크(예: https://bbs.ruliweb.com/...) 한 줄이 폭 초과하면 자동 줄바꿈 */
+.post-detail { word-break: break-word; overflow-wrap: anywhere; max-width: 100%; }
+.post-detail p, .post-detail h2, .post-detail h3 { word-break: break-word; overflow-wrap: anywhere; }
+.post-detail img { max-width: 100%; height: auto; }
+
+/* [신규 2026-04-20] 수다방 댓글 입력 영역 — input 기본 min-width(약 200px)때문에 플렉스 컨테이너 넘침.
+   모든 자식 input에 min-width:0 강제 + box-sizing 통일. */
+.post-detail .detail-comments input { min-width: 0; box-sizing: border-box; }
+.post-detail .detail-comments > div > div { min-width: 0; }
+
+/* [신규 2026-04-20] 지도 플로팅 위젯 (좌: 가까운 주차, 우: 최근 수다방) */
+.map-widget {
+    position: fixed; top: 75px;
+    width: 160px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 2px solid #FFD400;
+    border-radius: 14px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15);
+    z-index: 500;
+    font-size: 12px;
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+    max-height: 360px;
+}
+.map-widget.collapsed { max-height: 38px; }
+.map-widget.collapsed .map-widget-chevron { transform: rotate(-90deg); }
+.map-widget-left { left: 10px; }
+.map-widget-right { right: 10px; }
+
+.map-widget-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px;
+    font-weight: bold;
+    background: #FFD400;
+    border-bottom: 1px solid #e6bf00;
+    cursor: pointer;
+    font-size: 12px;
+    user-select: none;
+}
+.map-widget-chevron {
+    font-size: 10px; color: #333;
+    transition: transform 0.2s ease;
+}
+.map-widget-body {
+    max-height: 320px;
+    overflow-y: auto;
+}
+.widget-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f3f3f3;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.widget-item:last-child { border-bottom: none; }
+.widget-item:hover { background: #fffde7; }
+.widget-item-title {
+    font-weight: bold; color: #000;
+    font-size: 12px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.3;
+}
+.widget-item-meta {
+    font-size: 10px; color: #888;
+    margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.widget-empty {
+    padding: 15px 12px; text-align: center;
+    color: #999; font-size: 11px;
+}
+
+/* 모바일 대응: 화면 좁을 때 위젯 더 작게 */
+@media (max-width: 480px) {
+    .map-widget { width: 130px; top: 68px; font-size: 11px; max-height: 300px; }
+    .map-widget-header { padding: 8px 10px; font-size: 11px; }
+    .widget-item { padding: 6px 10px; }
+    .widget-item-title { font-size: 11px; }
+    .widget-item-meta { font-size: 9px; }
+    .map-widget-body { max-height: 260px; }
+}
+
+/* [신규 2026-04-20] 수다방 검색 바 */
+.board-search {
+    position: relative;
+    margin-bottom: 15px;
+}
+.board-search input {
+    width: 100%;
+    padding: 12px 40px 12px 15px;
+    font-size: 14px;
+    border: 2px solid #FFD400;
+    border-radius: 12px;
+    background: #fffef5;
+    box-sizing: border-box;
+    outline: none;
+}
+.board-search input:focus { background: #fff; border-color: #e59500; }
+.board-search-clear {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; border: none; background: #eee;
+    border-radius: 50%; font-size: 16px; font-weight: bold;
+    color: #666; cursor: pointer; line-height: 1;
+}
+.board-search-clear:hover { background: #ddd; }
+
 /* [신규 - 단계 3] 랭킹 페이지 */
 #ranking-page {
     width: 100%; height: 100vh;

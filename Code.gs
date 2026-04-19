@@ -11,6 +11,8 @@
  */
 
 const DRIVE_FOLDER_ID = "10osneXcIBiNNhqH909jeLmBlYqc1cGQn";
+// [신규 2026-04-19] 운영자 계정 — 랭킹 집계에서 제외
+const OPERATOR_NICKS = ["쌍칼", "쌍칼(셔틀봇)", "서울시"];
 
 function doGet(e) {
   e = e || { parameter: {} };
@@ -41,8 +43,13 @@ function doGet(e) {
 
     if (p.type === "report") {
       if (!checkUser(userSheet, p.user, p.pw)) return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
-      mainSheet.appendRow([p.user, p.name, p.ptype, p.addr, p.desc, p.lat, p.lng, new Date(), p.pw]);
-      return createResponse({res: "ok"});
+      // [신규 2026-04-20] GET 경로: 이미지 URL만 있는 경우 Drive 재호스팅 후 저장 (파일 업로드는 POST 경로 사용)
+      var imgUrlGet = "";
+      if (p.image_url && /^https?:\/\//i.test(p.image_url)) {
+        imgUrlGet = saveUrlToDrive(p.image_url, "gj_report_ext_" + new Date().getTime());
+      }
+      mainSheet.appendRow([p.user, p.name, p.ptype, p.addr, p.desc, p.lat, p.lng, new Date(), p.pw, imgUrlGet]);
+      return createResponse({res: "ok", imageUrl: imgUrlGet});
     }
 
     if (p.type === "add_comment") {
@@ -263,10 +270,28 @@ function doPost(e) {
     var postData = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userSheet = getOrCreateSheet(ss, "users", ["아이디", "비밀번호"]);
-    var boardSheet = getOrCreateSheet(ss, "board", ["ID", "작성자", "제목", "본문", "이미지URL", "링크", "날짜", "비번"]);
 
     if (!checkUser(userSheet, postData.user, postData.pw)) return createResponse({res: "error", msg: "비밀번호가 틀리거나 등록된 비번과 다릅니다."});
 
+    // [신규 2026-04-20] 주차 제보도 POST로 받아 이미지 업로드(base64) 지원
+    // 동일 엔드포인트에서 type 필드로 라우팅. type이 없으면 기존 add_post로 fallback.
+    if (postData.type === "report") {
+      var mainSheet = ss.getSheets()[0];
+      var reportImg = "";
+      if (postData.image_data && String(postData.image_data).length > 100) {
+        reportImg = saveFileToDrive(postData.image_data, "gj_report_" + new Date().getTime());
+      } else if (postData.image_url && /^https?:\/\//i.test(postData.image_url)) {
+        reportImg = saveUrlToDrive(postData.image_url, "gj_report_ext_" + new Date().getTime());
+      }
+      mainSheet.appendRow([
+        postData.user, postData.name, postData.ptype, postData.addr, postData.desc,
+        postData.lat, postData.lng, new Date(), postData.pw, reportImg
+      ]);
+      return createResponse({res: "ok", imageUrl: reportImg});
+    }
+
+    // 기존: 수다방 글 등록 (add_post)
+    var boardSheet = getOrCreateSheet(ss, "board", ["ID", "작성자", "제목", "본문", "이미지URL", "링크", "날짜", "비번"]);
     var imageUrl = "";
     if (postData.image_data && postData.image_data.length > 100) {
       imageUrl = saveFileToDrive(postData.image_data, "gj_img_" + new Date().getTime());
@@ -368,6 +393,7 @@ function handleFetch(p, mainSheet, commentSheet) {
             name: r.PKLT_NM, address: r.ADDR,
             lat: parseFloat(r.LAT), lng: parseFloat(r.LOT),
             type: "무료", user: "서울시", desc: "공공데이터",
+            imageUrl: "", // [추가 2026-04-20] 공공데이터엔 이미지 없음 (프론트에서 기본 P 이미지로 대체)
             avgRating: "5.0", comments: []
           };
         }));
@@ -397,6 +423,7 @@ function handleFetch(p, mainSheet, commentSheet) {
       return {
         user: r[0], name: r[1], type: r[2], address: r[3], desc: r[4],
         lat: parseFloat(r[5]), lng: parseFloat(r[6]),
+        imageUrl: r[9] || "", // [추가 2026-04-20] 주차 이미지 (컬럼 J). 없으면 빈 문자열 → 프론트에서 기본 이미지 표시
         avgRating: avg, comments: cList
       };
     });
@@ -509,6 +536,8 @@ function handleRanking(mainSheet, commentSheet) {
     for (var i = 1; i < mainRows.length; i++) {
       var u = String(mainRows[i][0]);
       if (!u) continue;
+      // [신규 2026-04-19] 운영자 계정은 랭킹 집계에서 완전 배제
+      if (OPERATOR_NICKS.indexOf(u) !== -1) continue;
       var placeName = String(mainRows[i][1]).trim();
       var reportDate = mainRows[i][7];
 
