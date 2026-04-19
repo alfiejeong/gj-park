@@ -105,7 +105,11 @@ async function fetchBoard() {
         const data = await res.json();
         if (Array.isArray(data)) {
             boardData = data;
-            renderBoard();
+            // [버그수정 2026-04-20] 우측 위젯에서 특정 글을 곧장 열었는데 뒤늦게 도착한 fetchBoard 응답이
+            // renderBoard()로 목록을 다시 그려 상세 화면을 덮어버리는 현상 수정.
+            // 현재 글 상세(.post-detail)를 보고 있는 중이면 목록 재렌더 스킵.
+            const isViewingDetail = !!document.querySelector('#board-content .post-detail');
+            if (!isViewingDetail) renderBoard();
             // [신규 2026-04-20] 우측 위젯도 최신 목록으로 갱신
             if (typeof renderRecentBoardWidget === 'function') renderRecentBoardWidget();
         }
@@ -517,10 +521,12 @@ function openBoardAtPost(postId) {
     if (!boardPage) return;
     boardPage.classList.remove('hidden');
     document.getElementById('floating-menu').style.display = 'none';
+    hideMapWidgets();
+    // 히스토리에 board 상태를 먼저 쌓고, 그 위에 post 상태를 viewPostDetail이 push하도록 함
     history.pushState({ view: 'board' }, "수다방", "#board");
-    // 상세로 push
-    setTimeout(() => viewPostDetail(postId, true), 80);
-    // 백그라운드로 최신화
+    // 상세를 즉시 렌더 (setTimeout 제거 — 화면 깜빡임 방지)
+    viewPostDetail(postId, true);
+    // 백그라운드로 최신화 — 상세 화면 덮지 않도록 fetchBoard 내부에서 체크
     fetchBoard();
 }
 
