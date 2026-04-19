@@ -23,8 +23,9 @@ var isFetching = false;       // [추가] 중복 fetch 방어 플래그
 var boardData = [];
 var currentBoardPage = 1;      // [추가] 수다방 현재 페이지
 const POSTS_PER_PAGE = 10;     // [추가] 페이지당 게시글 수
+var userScores = {};           // [추가 - 단계 4-1] 닉네임 → 점수 맵 (뱃지 표시용)
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyRC2Gr1osh7hKm3eQB_AVErjeZ7nN8PmFGbpkIkbGWv46xsUZJ3kq7ozVH2VV8lf_E/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxSxWqxFzwhCZQY9D15RseTXtTLdhUFqSFE3zzca1fRGmC3mI13RBuO-bw5UutRNJF1/exec";
 
 async function preFetchData() {
     // [추가] 중복 호출 방어
@@ -40,16 +41,23 @@ async function preFetchData() {
     const fetchSheet = fetch(`${SCRIPT_URL}?type=sheet&t=${t}`).then(res => res.json());
     const fetchSeoul = fetch(`${SCRIPT_URL}?type=seoul&t=${t}`).then(res => res.json());
     const fetchBoard = fetch(`${SCRIPT_URL}?type=get_board&t=${t}`).then(res => res.json());
+    // [추가 - 단계 4-1] 뱃지 표시용 점수 맵도 함께 수급
+    const fetchRanking = fetch(`${SCRIPT_URL}?type=get_ranking&t=${t}`).then(res => res.json());
 
     try {
-        const results = await Promise.allSettled([fetchSheet, fetchSeoul, fetchBoard]);
+        const results = await Promise.allSettled([fetchSheet, fetchSeoul, fetchBoard, fetchRanking]);
 
         results.forEach((result, idx) => {
             if (result.status === 'fulfilled' && Array.isArray(result.value)) {
                 if (idx === 0 || idx === 1) {
                     preloadedData.push(...result.value);
-                } else {
+                } else if (idx === 2) {
                     boardData = result.value;
+                } else if (idx === 3) {
+                    // [추가] ranking 결과를 userScores 맵으로 변환
+                    rankingData = result.value;
+                    userScores = {};
+                    result.value.forEach(u => { userScores[String(u.user)] = u.score; });
                 }
             } else {
                 console.warn(`${idx + 1}번 데이터 로드 실패 또는 규격 오류.`, result.reason);
@@ -95,6 +103,169 @@ function getBadge(score) {
     if (score >= 1000) return '🏆';
     if (score >= 50) return '⭐';
     return '';
+}
+
+// [추가 - 단계 4-1] 닉네임으로 뱃지 가져오기 (userScores 맵 활용)
+function getBadgeForUser(nick) {
+    if (!nick) return '';
+    return getBadge(userScores[String(nick)] || 0);
+}
+
+// [추가 - 단계 4-3] 신고 권한 여부 (내 점수 ≥ 500)
+function canReport() {
+    const myNick = localStorage.getItem('gj-nick') || '';
+    if (!myNick) return false;
+    return (userScores[String(myNick)] || 0) >= 500;
+}
+
+// [추가 - 단계 4-2] 수정 권한 여부 (내 점수 ≥ 200)
+function canEdit() {
+    const myNick = localStorage.getItem('gj-nick') || '';
+    if (!myNick) return false;
+    return (userScores[String(myNick)] || 0) >= 200;
+}
+
+// [추가 - 단계 4-2] 주차 후기 수정 (본인 + 200점 이상)
+async function editSpotComment(targetName, originalUser, currentContent, currentRating) {
+    const myNick = localStorage.getItem('gj-nick') || '';
+    if (String(myNick) !== String(originalUser)) return alert("본인이 작성한 후기만 수정할 수 있습니다.");
+    if (!canEdit()) return alert("수정 권한은 200점 이상 유저에게만 부여됩니다.");
+
+    const newContent = prompt("후기 내용을 수정하세요.", currentContent || "");
+    if (newContent === null) return;
+    const newRatingStr = prompt("별점을 입력하세요 (1~5)", String(currentRating || 5));
+    if (newRatingStr === null) return;
+    const newRating = parseInt(newRatingStr, 10);
+    if (isNaN(newRating) || newRating < 1 || newRating > 5) return alert("별점은 1~5 사이의 숫자여야 합니다.");
+
+    const pw = prompt(`[${myNick}] 님의 비밀번호를 입력해주세요.`);
+    if (!pw) return;
+
+    toggleLoading(true, "후기 수정 중...");
+    try {
+        const q = new URLSearchParams({ type: "edit_comment", target_id: targetName, user: myNick, pw: pw, comment: newContent, rating: newRating });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        if (result.res === "ok") {
+            alert("후기가 수정되었습니다.");
+            location.reload();
+        } else {
+            alert("오류: " + (result.msg || "수정 실패"));
+        }
+    } catch (e) {
+        alert("통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
+}
+
+// [추가 - 단계 4-2] 수다방 댓글 수정 (본인 + 200점 이상)
+async function editBoardComment(postId, originalUser, date, currentText) {
+    const myNick = localStorage.getItem('gj-nick') || '';
+    if (String(myNick) !== String(originalUser)) return alert("본인이 작성한 댓글만 수정할 수 있습니다.");
+    if (!canEdit()) return alert("수정 권한은 200점 이상 유저에게만 부여됩니다.");
+
+    const newText = prompt("댓글 내용을 수정하세요.", currentText || "");
+    if (newText === null) return;
+    if (!newText.trim()) return alert("빈 내용으로는 수정할 수 없습니다.");
+
+    const pw = prompt(`[${myNick}] 님의 비밀번호를 입력해주세요.`);
+    if (!pw) return;
+
+    toggleLoading(true, "댓글 수정 중...");
+    try {
+        const q = new URLSearchParams({ type: "edit_board_comment", post_id: postId, user: myNick, pw: pw, date: date, comment: newText });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        if (result.res === "ok") {
+            alert("댓글이 수정되었습니다.");
+            const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+            boardData = await refreshRes.json();
+            viewPostDetail(postId, false);
+        } else {
+            alert("오류: " + (result.msg || "수정 실패"));
+        }
+    } catch (e) {
+        alert("통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
+}
+
+// [추가 - 단계 4-3] 수다방 글 신고
+async function reportPost(postId, authorNick) {
+    const myNick = localStorage.getItem('gj-nick') || '';
+    if (!myNick) return alert("신고하려면 먼저 닉네임으로 활동 기록이 있어야 해요.");
+    if (String(myNick) === String(authorNick)) return alert("본인이 작성한 글은 신고할 수 없습니다.");
+    if (!canReport()) return alert("신고 권한은 500점 이상 유저에게만 부여됩니다.");
+
+    if (!confirm(`이 글을 신고하시겠습니까?\n\n3명 이상 신고가 누적되면 자동 숨김 처리됩니다.\n(2000점 이상 유저는 가중치 2배)`)) return;
+    const pw = prompt(`[${myNick}] 님의 비밀번호를 입력해주세요.`);
+    if (!pw) return;
+
+    toggleLoading(true, "신고 접수 중...");
+    try {
+        const q = new URLSearchParams({ type: "report_post", post_id: postId, user: myNick, pw: pw });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        if (result.res === "ok") {
+            alert(`신고가 접수되었습니다. (가중치 ${result.weight})`);
+            const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+            boardData = await refreshRes.json();
+            renderBoard();
+        } else {
+            alert("오류: " + (result.msg || "신고 실패"));
+        }
+    } catch (e) {
+        alert("통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
+}
+
+// [추가 - 단계 4-3] 수다방 댓글 신고
+async function reportBoardComment(postId, commentUser, commentDate) {
+    const myNick = localStorage.getItem('gj-nick') || '';
+    if (!myNick) return alert("신고하려면 먼저 닉네임으로 활동 기록이 있어야 해요.");
+    if (String(myNick) === String(commentUser)) return alert("본인이 작성한 댓글은 신고할 수 없습니다.");
+    if (!canReport()) return alert("신고 권한은 500점 이상 유저에게만 부여됩니다.");
+
+    if (!confirm(`이 댓글을 신고하시겠습니까?\n\n3명 이상 신고가 누적되면 자동 숨김 처리됩니다.`)) return;
+    const pw = prompt(`[${myNick}] 님의 비밀번호를 입력해주세요.`);
+    if (!pw) return;
+
+    toggleLoading(true, "신고 접수 중...");
+    try {
+        const q = new URLSearchParams({ type: "report_comment", post_id: postId, comment_user: commentUser, date: commentDate, user: myNick, pw: pw });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const result = await res.json();
+        if (result.res === "ok") {
+            alert(`신고가 접수되었습니다. (가중치 ${result.weight})`);
+            const refreshRes = await fetch(`${SCRIPT_URL}?type=get_board&t=${new Date().getTime()}`);
+            boardData = await refreshRes.json();
+            viewPostDetail(postId, false);
+        } else {
+            alert("오류: " + (result.msg || "신고 실패"));
+        }
+    } catch (e) {
+        alert("통신 오류가 발생했습니다.");
+    } finally {
+        toggleLoading(false);
+    }
+}
+
+// [추가 - webp 대응] 이미지 로드 실패 시 대체 URL로 재시도
+// drive.google.com/thumbnail 실패 → drive.google.com/uc?export=view 시도 → 그래도 실패하면 숨김
+function handleImgError(imgEl, originalUrl) {
+    if (!imgEl || imgEl.dataset.retried) { if (imgEl) imgEl.style.display = 'none'; return; }
+    imgEl.dataset.retried = '1';
+    // id 추출 시도
+    var idMatch = /[?&]id=([a-zA-Z0-9_-]+)/.exec(originalUrl);
+    if (idMatch) {
+        imgEl.src = 'https://drive.google.com/uc?export=view&id=' + idMatch[1];
+    } else {
+        imgEl.style.display = 'none';
+    }
 }
 
 // 다음 혜택 구간 계산
@@ -261,13 +432,30 @@ function attachInfoWindow(marker, item) {
     // [추가] onclick 인자에 안전하게 박기 위한 이스케이프
     const nameEsc = String(item.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
-    let commentsHtml = item.comments && item.comments.length > 0 ? item.comments.map(c => {
+    // [추가 - 단계 4-4] 후기 정렬 우선권: 점수 높은 유저(🏆·⭐)의 후기가 먼저 보이도록
+    const sortedComments = (item.comments || []).slice().sort((a, b) => {
+        return (userScores[String(b.user)] || 0) - (userScores[String(a.user)] || 0);
+    });
+
+    const myNickForEdit = localStorage.getItem('gj-nick') || '';
+    let commentsHtml = sortedComments.length > 0 ? sortedComments.map(c => {
         const userEsc = String(c.user).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        // [추가 - 단계 4-1] 후기 작성자 뱃지
+        const badge = getBadgeForUser(c.user);
+        // [추가 - 단계 4-2] 본인 + 200점 이상이면 수정 버튼 노출
+        const showEdit = canEdit() && String(myNickForEdit) === String(c.user);
+        const commentEsc = String(c.comment || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+        const editBtn = showEdit
+            ? `<span onclick="editSpotComment('${nameEsc}', '${userEsc}', '${commentEsc}', ${c.rating || 5})" style="font-size:10px; color:#2196f3; cursor:pointer; text-decoration:underline; margin-right:6px;">수정</span>`
+            : '';
         return `
         <div class="comment-item" style="padding:8px 0; border-bottom:1px solid #f9f9f9;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="font-size:11px; font-weight:bold; color:#555;">${c.user} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
-                <span onclick="deleteSpotComment('${nameEsc}', '${userEsc}')" style="font-size:10px; color:#bbb; cursor:pointer; text-decoration:underline;">삭제</span>
+                <div style="font-size:11px; font-weight:bold; color:#555;">${c.user}${badge ? ' ' + badge : ''} <span style="color:#f39c12; margin-left:5px;">⭐${c.rating}</span></div>
+                <div>
+                    ${editBtn}
+                    <span onclick="deleteSpotComment('${nameEsc}', '${userEsc}')" style="font-size:10px; color:#bbb; cursor:pointer; text-decoration:underline;">삭제</span>
+                </div>
             </div>
             <div style="font-size:12px; color:#333; margin-top:2px;">${c.comment}</div>
         </div>`;
@@ -282,7 +470,7 @@ function attachInfoWindow(marker, item) {
 
             <div class="info-grid">
                 <div class="info-item"><span class="info-label">유형</span><span class="info-value">${item.type}</span></div>
-                <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}</span></div>
+                <div class="info-item"><span class="info-label">제보자</span><span class="info-value">${item.user}${getBadgeForUser(item.user) ? ' ' + getBadgeForUser(item.user) : ''}</span></div>
                 <div class="info-full" style="background:#f9f9f9; padding:8px; border-radius:10px; margin:5px 0;">
                     <span class="info-label">상세내용</span><br>
                     <span class="info-value" style="white-space:pre-wrap; font-size:12px;">${item.desc || "상세내용 없음"}</span>
@@ -397,12 +585,14 @@ function openBoard() {
 
     currentBoardPage = 1; // [추가] 수다방 진입 시 1페이지로 초기화
 
+    // [버그 수정 2026-04-19] 진입 시마다 항상 서버에서 최신 목록 재수급.
+    // 기존엔 boardData가 비어있지 않으면 캐시만 그리고 끝내서 "새로고침해야 새 글이 보이는" 현상 발생.
     if (boardData.length > 0) {
-        renderBoard();
+        renderBoard(); // 1) 캐시된 목록으로 즉시 그려서 체감 속도 유지
     } else {
-        renderBoard();
-        fetchBoard(); // [수정] 이제 fetchBoard 함수가 정의되어 있음
+        renderBoard(); // 빈 상태 메시지 노출
     }
+    fetchBoard(); // 2) 항상 최신본 재요청 → 성공 시 renderBoard() 호출
 }
 
 function closeBoard() {
@@ -431,9 +621,11 @@ function renderBoard() {
 
     const postListHtml = pageData.map(p => {
         const pidEsc = String(p.id).replace(/'/g, "\\'");
+        // [추가 - 단계 4-1] 작성자 뱃지
+        const badge = getBadgeForUser(p.author);
         return `
         <div class="post-card" onclick="viewPostDetail('${pidEsc}')">
-            <div style="font-size:12px; color:#999;">${p.author}</div>
+            <div style="font-size:12px; color:#999;">${p.author}${badge ? ' ' + badge : ''}</div>
             <h3 style="margin:5px 0;">${p.title}</h3>
         </div>`;
     }).join('');
@@ -505,15 +697,25 @@ function viewPostDetail(postId, isPush = true) {
     }
 
     const nick = localStorage.getItem('gj-nick') || "";
+    // [추가 - 단계 4-3] 글 신고 버튼 노출 조건
+    const showReportPost = canReport() && String(nick) !== String(post.author);
+    const pidEscTop = String(post.id).replace(/'/g, "\\'");
+    const authorEscTop = String(post.author).replace(/'/g, "\\'");
+    const reportPostBtn = showReportPost
+        ? `<button onclick="reportPost('${pidEscTop}', '${authorEscTop}')" style="color:#ff9800; border:none; background:none; text-decoration:underline; cursor:pointer; margin-right:8px;">🚨 글 신고</button>`
+        : '';
     document.getElementById('board-content').innerHTML = `
         <div class="post-detail">
             <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
                 <button onclick="renderBoardWithHistory()" class="back-btn">← 목록</button>
-                <button onclick="deletePost('${post.id}')" style="color:#ff4d4d; border:none; background:none; text-decoration:underline; cursor:pointer;">글 삭제</button>
+                <div>
+                    ${reportPostBtn}
+                    <button onclick="deletePost('${post.id}')" style="color:#ff4d4d; border:none; background:none; text-decoration:underline; cursor:pointer;">글 삭제</button>
+                </div>
             </div>
             <h2>${post.title}</h2>
-            <div style="font-size:12px; color:#999; margin-bottom:15px;">작성자: ${post.author} | ${new Date(post.date).toLocaleString()}</div>
-            ${post.imageUrl ? `<img src="${post.imageUrl}" style="width:100%; border-radius:10px; margin-bottom:15px;">` : ""}
+            <div style="font-size:12px; color:#999; margin-bottom:15px;">작성자: ${post.author}${getBadgeForUser(post.author) ? ' ' + getBadgeForUser(post.author) : ''} | ${new Date(post.date).toLocaleString()}</div>
+            ${post.imageUrl ? `<img src="${post.imageUrl}" onerror="handleImgError(this, '${post.imageUrl}')" style="width:100%; border-radius:10px; margin-bottom:15px;">` : ""}
             <p style="white-space:pre-wrap; margin-bottom:30px;">${post.content}</p>
 
             <div class="detail-comments" style="border-top:2px solid #FFD400; padding-top:20px;">
@@ -523,10 +725,27 @@ function viewPostDetail(postId, isPush = true) {
                         const userEsc = String(c.user).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                         const dateEsc = String(c.date || '').replace(/'/g, "\\'");
                         const pidEsc = String(post.id).replace(/'/g, "\\'");
+                        // [추가 - 단계 4-1] 댓글 작성자 뱃지
+                        const cBadge = getBadgeForUser(c.user);
+                        // [추가 - 단계 4-3] 댓글 신고 버튼 노출 조건
+                        const showReportCmt = canReport() && String(nick) !== String(c.user);
+                        const reportCmtBtn = showReportCmt
+                            ? `<span onclick="reportBoardComment('${pidEsc}', '${userEsc}', '${dateEsc}')" style="font-size:10px; color:#ff9800; cursor:pointer; text-decoration:underline; white-space:nowrap;">🚨 신고</span>`
+                            : '';
+                        // [추가 - 단계 4-2] 본인 + 200점 이상이면 수정 버튼
+                        const showEditCmt = canEdit() && String(nick) === String(c.user);
+                        const textEscEdit = String(c.text || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+                        const editCmtBtn = showEditCmt
+                            ? `<span onclick="editBoardComment('${pidEsc}', '${userEsc}', '${dateEsc}', '${textEscEdit}')" style="font-size:10px; color:#2196f3; cursor:pointer; text-decoration:underline; white-space:nowrap;">수정</span>`
+                            : '';
                         return `
                         <div style="background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:8px; font-size:13px; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-                            <div style="flex:1;"><b>${c.user}</b>: ${c.text}</div>
-                            <span onclick="deleteBoardComment('${pidEsc}', '${userEsc}', '${dateEsc}')" style="font-size:10px; color:#bbb; cursor:pointer; text-decoration:underline; white-space:nowrap;">삭제</span>
+                            <div style="flex:1;"><b>${c.user}${cBadge ? ' ' + cBadge : ''}</b>: ${c.text}</div>
+                            <div style="display:flex; gap:8px; flex-shrink:0;">
+                                ${editCmtBtn}
+                                ${reportCmtBtn}
+                                <span onclick="deleteBoardComment('${pidEsc}', '${userEsc}', '${dateEsc}')" style="font-size:10px; color:#bbb; cursor:pointer; text-decoration:underline; white-space:nowrap;">삭제</span>
+                            </div>
                         </div>`;
                     }).join('') : "<p style='color:#999; font-size:12px;'>첫 댓글을 남겨보세요!</p>"}
                 </div>

@@ -21,9 +21,12 @@ function doGet(e) {
   var boardSheet = getOrCreateSheet(ss, "board", ["ID", "작성자", "제목", "본문", "이미지URL", "링크", "날짜", "비번"]);
   var commentSheet = getOrCreateSheet(ss, "comments", ["대상ID", "작성자", "내용", "별점", "날짜"]);
   var boardCommentSheet = getOrCreateSheet(ss, "board_comments", ["게시글ID", "작성자", "내용", "날짜"]);
+  // [신규 - 단계 4-3] 신고 시트: 3표(가중치 합 3) 이상이면 자동 숨김
+  var boardReportsSheet = getOrCreateSheet(ss, "board_reports", ["게시글ID", "신고자", "신고자가중치", "신고일"]);
+  var boardCmtReportsSheet = getOrCreateSheet(ss, "board_comment_reports", ["게시글ID", "댓글작성자", "댓글일시", "신고자", "신고자가중치", "신고일"]);
 
   try {
-    if (p.type === "get_board") return handleBoardFetch(boardSheet, boardCommentSheet);
+    if (p.type === "get_board") return handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet);
 
     // [신규 - 단계 2] 랭킹 조회
     if (p.type === "get_ranking") return handleRanking(mainSheet, commentSheet);
@@ -93,6 +96,51 @@ function doGet(e) {
       return createResponse({res: "error", msg: "삭제할 후기를 찾을 수 없습니다."});
     }
 
+    // [신규 - 단계 4-2] 주차 후기 수정 (200점 이상)
+    if (p.type === "edit_comment") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var eScore = getUserScore(p.user, mainSheet, commentSheet);
+      if (eScore < 200) {
+        return createResponse({res: "error", msg: "수정 권한은 200점 이상 유저에게만 부여됩니다. (현재 " + eScore + "점)"});
+      }
+      var eTargetId = String(p.target_id).trim();
+      var eRows = commentSheet.getDataRange().getValues();
+      for (var er = 1; er < eRows.length; er++) {
+        if (String(eRows[er][0]).trim() === eTargetId && String(eRows[er][1]) === String(p.user)) {
+          if (typeof p.comment !== 'undefined') commentSheet.getRange(er + 1, 3).setValue(p.comment);
+          if (typeof p.rating !== 'undefined' && p.rating !== '') commentSheet.getRange(er + 1, 4).setValue(p.rating);
+          commentSheet.getRange(er + 1, 5).setValue(new Date());
+          return createResponse({res: "ok"});
+        }
+      }
+      return createResponse({res: "error", msg: "수정할 후기를 찾을 수 없습니다."});
+    }
+
+    // [신규 - 단계 4-2] 수다방 댓글 수정 (200점 이상)
+    if (p.type === "edit_board_comment") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var eScore2 = getUserScore(p.user, mainSheet, commentSheet);
+      if (eScore2 < 200) {
+        return createResponse({res: "error", msg: "수정 권한은 200점 이상 유저에게만 부여됩니다. (현재 " + eScore2 + "점)"});
+      }
+      var ebRows = boardCommentSheet.getDataRange().getValues();
+      var eTargetDate = String(p.date);
+      for (var eb = 1; eb < ebRows.length; eb++) {
+        var ebDate = ebRows[eb][3] instanceof Date ? ebRows[eb][3].toISOString() : String(ebRows[eb][3]);
+        if (String(ebRows[eb][0]) === String(p.post_id)
+            && String(ebRows[eb][1]) === String(p.user)
+            && ebDate === eTargetDate) {
+          boardCommentSheet.getRange(eb + 1, 3).setValue(p.comment);
+          return createResponse({res: "ok"});
+        }
+      }
+      return createResponse({res: "error", msg: "수정할 댓글을 찾을 수 없습니다."});
+    }
+
     if (p.type === "delete_board_comment") {
       // [신규] 수다방 댓글 삭제: post_id + user + date 조합으로 식별
       if (!checkUser(userSheet, p.user, p.pw)) {
@@ -121,6 +169,79 @@ function doGet(e) {
         }
       }
       return createResponse({res: "error", msg: "대상을 찾을 수 없음"});
+    }
+
+    // [신규 - 단계 4-3] 수다방 글 신고
+    if (p.type === "report_post") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var score = getUserScore(p.user, mainSheet, commentSheet);
+      if (score < 500) {
+        return createResponse({res: "error", msg: "신고 권한은 500점 이상 유저에게만 부여됩니다. (현재 " + score + "점)"});
+      }
+      var targetPost = null;
+      var postRowsR = boardSheet.getDataRange().getValues();
+      for (var rp = 1; rp < postRowsR.length; rp++) {
+        if (String(postRowsR[rp][0]) === String(p.post_id)) { targetPost = postRowsR[rp]; break; }
+      }
+      if (!targetPost) return createResponse({res: "error", msg: "신고 대상 글을 찾을 수 없습니다."});
+      if (String(targetPost[1]) === String(p.user)) {
+        return createResponse({res: "error", msg: "본인이 작성한 글은 신고할 수 없습니다."});
+      }
+      // 중복 신고 방지
+      var existReports = boardReportsSheet.getDataRange().getValues();
+      for (var ex = 1; ex < existReports.length; ex++) {
+        if (String(existReports[ex][0]) === String(p.post_id)
+            && String(existReports[ex][1]) === String(p.user)) {
+          return createResponse({res: "error", msg: "이미 신고하신 글입니다."});
+        }
+      }
+      var weight = score >= 2000 ? 2 : 1; // 2000점 이상 가중치 2배
+      boardReportsSheet.appendRow([p.post_id, p.user, weight, new Date()]);
+      return createResponse({res: "ok", weight: weight});
+    }
+
+    // [신규 - 단계 4-3] 수다방 댓글 신고
+    if (p.type === "report_comment") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var rscore = getUserScore(p.user, mainSheet, commentSheet);
+      if (rscore < 500) {
+        return createResponse({res: "error", msg: "신고 권한은 500점 이상 유저에게만 부여됩니다. (현재 " + rscore + "점)"});
+      }
+      // 대상 댓글 존재 확인 & 자기 댓글 신고 차단
+      var bcRowsR = boardCommentSheet.getDataRange().getValues();
+      var foundCmt = false;
+      for (var bc = 1; bc < bcRowsR.length; bc++) {
+        var cd = bcRowsR[bc][3] instanceof Date ? bcRowsR[bc][3].toISOString() : String(bcRowsR[bc][3]);
+        if (String(bcRowsR[bc][0]) === String(p.post_id)
+            && String(bcRowsR[bc][1]) === String(p.comment_user)
+            && cd === String(p.date)) {
+          if (String(bcRowsR[bc][1]) === String(p.user)) {
+            return createResponse({res: "error", msg: "본인이 작성한 댓글은 신고할 수 없습니다."});
+          }
+          foundCmt = true;
+          break;
+        }
+      }
+      if (!foundCmt) return createResponse({res: "error", msg: "신고 대상 댓글을 찾을 수 없습니다."});
+
+      // 중복 신고 방지
+      var existCR = boardCmtReportsSheet.getDataRange().getValues();
+      for (var ec = 1; ec < existCR.length; ec++) {
+        var ecd = existCR[ec][2] instanceof Date ? existCR[ec][2].toISOString() : String(existCR[ec][2]);
+        if (String(existCR[ec][0]) === String(p.post_id)
+            && String(existCR[ec][1]) === String(p.comment_user)
+            && ecd === String(p.date)
+            && String(existCR[ec][3]) === String(p.user)) {
+          return createResponse({res: "error", msg: "이미 신고하신 댓글입니다."});
+        }
+      }
+      var rweight = rscore >= 2000 ? 2 : 1;
+      boardCmtReportsSheet.appendRow([p.post_id, p.comment_user, p.date, p.user, rweight, new Date()]);
+      return createResponse({res: "ok", weight: rweight});
     }
 
     if (p.type === "delete_post") {
@@ -169,10 +290,21 @@ function saveFileToDrive(base64Data, fileName) {
     var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
     var splitData = base64Data.split(',');
     var bytes = Utilities.base64Decode(splitData[1]);
-    var blob = Utilities.newBlob(bytes, splitData[0].substring(5, splitData[0].indexOf(';')), fileName);
+    var mime = splitData[0].substring(5, splitData[0].indexOf(';'));
+
+    // [수정 - webp 대응] MIME에 맞춰 확장자 자동 부여 (drive/thumbnail 엔드포인트가 확장자 없어도 동작하지만
+    // 일부 CDN 경로에서 webp 전송 이슈 방지용)
+    var extMap = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif" };
+    var ext = extMap[mime] || "";
+    var safeName = fileName + ext;
+
+    var blob = Utilities.newBlob(bytes, mime, safeName);
     var file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return "https://docs.google.com/thumbnail?id=" + file.getId() + "&sz=w1000";
+
+    // [수정 - webp 대응] drive.google.com/thumbnail 은 webp 포함 주요 이미지 포맷을 JPEG로 변환해 송출.
+    // 브라우저 호환성이 가장 좋고, 핫링크도 정상 동작.
+    return "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w1000";
   } catch (e) { return ""; }
 }
 
@@ -240,15 +372,47 @@ function handleFetch(p, mainSheet, commentSheet) {
   }
 }
 
-function handleBoardFetch(boardSheet, boardCommentSheet) {
+function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet) {
   var posts = boardSheet.getDataRange().getValues().slice(1).reverse();
   var allCmts = boardCommentSheet.getDataRange().getValues().length > 1
     ? boardCommentSheet.getDataRange().getValues().slice(1)
     : [];
 
-  var data = posts.map(function(pos) {
+  // [신규 - 단계 4-3] 신고 가중치 합산 (3 이상이면 숨김)
+  var postReportMap = {};  // postId → 가중치 합
+  var cmtReportMap = {};   // postId|user|dateISO → 가중치 합
+  if (boardReportsSheet) {
+    var prRows = boardReportsSheet.getDataRange().getValues();
+    for (var a = 1; a < prRows.length; a++) {
+      var pid = String(prRows[a][0]);
+      var w = parseFloat(prRows[a][2] || 1);
+      postReportMap[pid] = (postReportMap[pid] || 0) + w;
+    }
+  }
+  if (boardCmtReportsSheet) {
+    var crRows = boardCmtReportsSheet.getDataRange().getValues();
+    for (var b = 1; b < crRows.length; b++) {
+      var cpid = String(crRows[b][0]);
+      var cu = String(crRows[b][1]);
+      var cd = crRows[b][2] instanceof Date ? crRows[b][2].toISOString() : String(crRows[b][2]);
+      var cw = parseFloat(crRows[b][4] || 1);
+      var key = cpid + "|" + cu + "|" + cd;
+      cmtReportMap[key] = (cmtReportMap[key] || 0) + cw;
+    }
+  }
+  var HIDE_THRESHOLD = 3;
+
+  var data = posts.filter(function(pos) {
+    // 숨김 처리된 글은 응답에서 제외
+    return (postReportMap[String(pos[0])] || 0) < HIDE_THRESHOLD;
+  }).map(function(pos) {
     var postId = pos[0];
-    var matched = allCmts.filter(function(c) { return String(c[0]) === String(postId); });
+    var matched = allCmts.filter(function(c) {
+      if (String(c[0]) !== String(postId)) return false;
+      var d = c[3] instanceof Date ? c[3].toISOString() : String(c[3]);
+      var key = String(postId) + "|" + String(c[1]) + "|" + d;
+      return (cmtReportMap[key] || 0) < HIDE_THRESHOLD;
+    });
     return {
       id: postId,
       author: pos[1],
@@ -256,7 +420,7 @@ function handleBoardFetch(boardSheet, boardCommentSheet) {
       content: pos[3],
       imageUrl: pos[4],
       date: pos[6],
-      // [수정] date 포함 (삭제 식별용). ISO 문자열로 통일.
+      // [수정] date 포함 (삭제·신고 식별용). ISO 문자열로 통일.
       comments: matched.map(function(c) {
         var d = c[3] instanceof Date ? c[3].toISOString() : String(c[3]);
         return { user: c[1], text: c[2], date: d };
@@ -264,6 +428,33 @@ function handleBoardFetch(boardSheet, boardCommentSheet) {
     };
   });
   return createResponse(data);
+}
+
+// [신규 - 단계 4-3] 유저 점수 계산 (신고 권한/가중치 판정용)
+// 공식: (제보 수 × 5) + (받은 별점 합계), 자기 후기 제외
+function getUserScore(user, mainSheet, commentSheet) {
+  if (!user) return 0;
+  var mainRows = mainSheet.getDataRange().getValues();
+  var cmtRows = commentSheet.getDataRange().getValues();
+
+  var myPlaces = {};
+  var reportCount = 0;
+  for (var i = 1; i < mainRows.length; i++) {
+    if (String(mainRows[i][0]) === String(user)) {
+      reportCount++;
+      myPlaces[String(mainRows[i][1]).trim()] = true;
+    }
+  }
+
+  var reviewSum = 0;
+  for (var j = 1; j < cmtRows.length; j++) {
+    var target = String(cmtRows[j][0]).trim();
+    var reviewer = String(cmtRows[j][1]);
+    if (!myPlaces[target]) continue;
+    if (reviewer === String(user)) continue; // 자기 후기 제외
+    reviewSum += parseFloat(cmtRows[j][3] || 0);
+  }
+  return (reportCount * 5) + reviewSum;
 }
 
 // [신규 - 단계 2] 랭킹 계산
