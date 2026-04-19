@@ -24,7 +24,7 @@ var boardData = [];
 var currentBoardPage = 1;      // [추가] 수다방 현재 페이지
 const POSTS_PER_PAGE = 10;     // [추가] 페이지당 게시글 수
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzPY5Rk_yEFOayX0IwGkzmY_sxuAvb6lOBKaimMjVIUNreQlruTLXxRo-Rpj_E_0Ef1/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyRC2Gr1osh7hKm3eQB_AVErjeZ7nN8PmFGbpkIkbGWv46xsUZJ3kq7ozVH2VV8lf_E/exec";
 
 async function preFetchData() {
     // [추가] 중복 호출 방어
@@ -85,6 +85,128 @@ async function fetchBoard() {
     } catch (e) {
         console.error("수다방 데이터 로드 실패:", e);
     }
+}
+
+// [신규 - 단계 3] 랭킹 관련 상태·함수
+var rankingData = [];
+
+// 포인트 구간별 뱃지
+function getBadge(score) {
+    if (score >= 1000) return '🏆';
+    if (score >= 50) return '⭐';
+    return '';
+}
+
+// 다음 혜택 구간 계산
+function getNextTier(score) {
+    const tiers = [
+        { name: '⭐ 뱃지', points: 50 },
+        { name: '후기·댓글 수정 권한', points: 200 },
+        { name: '수다방 신고 권한', points: 500 },
+        { name: '🏆 뱃지 + 후기 정렬 우선권', points: 1000 },
+        { name: '신고 가중치 2배', points: 2000 }
+    ];
+    return tiers.find(t => t.points > score);
+}
+
+async function openRanking() {
+    const rankingPage = document.getElementById('ranking-page');
+    rankingPage.classList.remove('hidden');
+    document.getElementById('floating-menu').style.display = 'none';
+    history.pushState({ view: 'ranking' }, "랭킹", "#ranking");
+
+    const content = document.getElementById('ranking-content');
+    content.innerHTML = `
+        <div style="text-align:center; padding:50px 20px; color:#999;">
+            <div class="loader" style="margin:0 auto 15px;"></div>
+            랭킹 집계 중...
+        </div>`;
+
+    try {
+        const res = await fetch(`${SCRIPT_URL}?type=get_ranking&t=${new Date().getTime()}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+            rankingData = data;
+            renderRanking();
+        } else {
+            content.innerHTML = `<div style="text-align:center; padding:40px; color:#999;">랭킹을 불러올 수 없습니다.</div>`;
+        }
+    } catch (e) {
+        content.innerHTML = `<div style="text-align:center; padding:40px; color:#ff4d4d;">통신 오류가 발생했습니다.</div>`;
+    }
+}
+
+function renderRanking() {
+    const content = document.getElementById('ranking-content');
+    const myNick = localStorage.getItem('gj-nick') || '';
+
+    if (rankingData.length === 0) {
+        content.innerHTML = `<div style="text-align:center; padding:40px; color:#999;">아직 랭킹 데이터가 없어요.<br>첫 제보를 남겨보세요! 🙌</div>`;
+        return;
+    }
+
+    const topN = rankingData.slice(0, 10);
+    const myStat = rankingData.find(u => String(u.user) === String(myNick));
+
+    const topHtml = topN.map(u => {
+        const badge = getBadge(u.score);
+        const medal = u.rank === 1 ? '🥇' : u.rank === 2 ? '🥈' : u.rank === 3 ? '🥉' : `#${u.rank}`;
+        const isMe = myNick && String(u.user) === String(myNick);
+        return `
+        <div class="rank-row ${isMe ? 'me' : ''}">
+            <div class="rank-num">${medal}</div>
+            <div class="rank-main">
+                <div class="rank-user">${u.user} ${badge}</div>
+                <div class="rank-detail">제보 ${u.reportCount} · 평균 ${u.avgRating}★</div>
+            </div>
+            <div class="rank-score">${u.score}점</div>
+        </div>`;
+    }).join('');
+
+    let myHtml = '';
+    if (myStat) {
+        const nextTier = getNextTier(myStat.score);
+        const nextHtml = nextTier
+            ? `<div class="next-tier">다음 혜택 <b>${nextTier.name}</b>까지 <b>${nextTier.points - myStat.score}점</b> 남음</div>`
+            : `<div class="next-tier">🎉 최고 등급 달성!</div>`;
+        myHtml = `
+        <div class="my-rank-box">
+            <h3>내 순위</h3>
+            <div class="rank-row me">
+                <div class="rank-num">#${myStat.rank}</div>
+                <div class="rank-main">
+                    <div class="rank-user">${myStat.user} ${getBadge(myStat.score)}</div>
+                    <div class="rank-detail">제보 ${myStat.reportCount} · 평균 ${myStat.avgRating}★</div>
+                </div>
+                <div class="rank-score">${myStat.score}점</div>
+            </div>
+            ${nextHtml}
+        </div>`;
+    } else if (myNick) {
+        myHtml = `<div class="my-rank-box"><p style="color:#999; text-align:center; margin:0;">[${myNick}]님은 아직 제보 기록이 없어 랭킹에 포함되지 않아요.</p></div>`;
+    }
+
+    const formulaHtml = `
+        <div class="rank-formula">
+            <b>점수 공식</b><br>
+            제보 1건당 +5점 · 내 제보에 받은 별점 합계 (1★=1점, 5★=5점)<br>
+            <span style="color:#999;">※ 본인이 본인 제보에 남긴 후기는 점수에 포함되지 않아요.</span>
+        </div>`;
+
+    content.innerHTML = `
+        <div class="rank-top-section">
+            <h3>TOP 10</h3>
+            ${topHtml}
+        </div>
+        ${myHtml}
+        ${formulaHtml}
+    `;
+}
+
+function closeRanking() {
+    document.getElementById('ranking-page').classList.add('hidden');
+    document.getElementById('floating-menu').style.display = 'flex';
+    if (window.location.hash === '#ranking') history.replaceState(null, "", window.location.pathname);
 }
 
 // 2. 지도 및 마커 렌더링
@@ -634,6 +756,7 @@ window.onpopstate = function(event) {
     const state = event.state;
     const modal = document.getElementById('modal');
     const boardPage = document.getElementById('board-page');
+    const rankingPage = document.getElementById('ranking-page');
 
     // 1. 모달 열려 있으면 닫기
     if (modal && !modal.classList.contains('hidden')) {
@@ -650,6 +773,12 @@ window.onpopstate = function(event) {
         } else {
             closeBoard();
         }
+        return;
+    }
+
+    // [신규 - 단계 3] 3. 랭킹 페이지 열려 있으면 닫기
+    if (rankingPage && !rankingPage.classList.contains('hidden')) {
+        closeRanking();
         return;
     }
 

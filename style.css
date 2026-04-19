@@ -152,6 +152,45 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 .post-card { border-bottom: 1px solid #eee; padding: 15px 0; cursor: pointer; }
 .post-card:hover { background: #fffde7; }
 
+/* [신규 - 단계 3] 랭킹 페이지 */
+#ranking-page {
+    width: 100%; height: 100vh;
+    position: fixed; top: 0; left: 0;
+    background: #fff; z-index: 3000;
+    padding-top: 60px;
+    overflow-y: auto; box-sizing: border-box;
+    transition: transform 0.3s ease;
+}
+#ranking-page.hidden { transform: translateX(100%); }
+.ranking-container { padding: 20px; max-width: 800px; margin: 0 auto; }
+.ranking-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.ranking-header h2 { margin: 0; }
+
+.rank-top-section h3 { margin: 0 0 12px; font-size: 15px; color: #333; }
+
+.rank-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; margin-bottom: 8px;
+    background: #fafafa; border: 1px solid #eee; border-radius: 14px;
+}
+.rank-row.me { background: #fffde7; border-color: #FFD400; border-width: 2px; }
+.rank-num { min-width: 44px; font-weight: 900; font-size: 18px; text-align: center; color: #555; }
+.rank-main { flex: 1; min-width: 0; }
+.rank-user { font-weight: bold; font-size: 14px; color: #000; }
+.rank-detail { font-size: 11px; color: #888; margin-top: 3px; }
+.rank-score { font-weight: 900; font-size: 16px; color: #000; white-space: nowrap; }
+
+.my-rank-box { margin-top: 25px; padding: 15px; background: #fff8dc; border: 2px solid #FFD400; border-radius: 16px; }
+.my-rank-box h3 { margin: 0 0 10px; font-size: 14px; color: #000; }
+.next-tier { margin-top: 10px; padding: 8px 12px; background: #fff; border-radius: 10px; font-size: 12px; color: #333; text-align: center; }
+.next-tier b { color: #e59500; }
+
+.rank-formula {
+    margin: 25px 0 40px; padding: 12px 14px;
+    background: #f9f9f9; border-left: 3px solid #FFD400; border-radius: 6px;
+    font-size: 11px; color: #555; line-height: 1.6;
+}
+
 /* 수다방 페이지네이션 */
 .pagination {
     display: flex;
