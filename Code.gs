@@ -15,22 +15,85 @@ const DRIVE_FOLDER_ID = "10osneXcIBiNNhqH909jeLmBlYqc1cGQn";
 const OPERATOR_NICKS = ["쌍칼", "쌍칼(셔틀봇)", "서울시"];
 
 function doGet(e) {
-  e = e || { parameter: {} };
-  var p = e.parameter;
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var mainSheet = ss.getSheets()[0];
-  var userSheet = getOrCreateSheet(ss, "users", ["아이디", "비밀번호"]);
-  var boardSheet = getOrCreateSheet(ss, "board", ["ID", "작성자", "제목", "본문", "이미지URL", "링크", "날짜", "비번"]);
-  var commentSheet = getOrCreateSheet(ss, "comments", ["대상ID", "작성자", "내용", "별점", "날짜"]);
-  var boardCommentSheet = getOrCreateSheet(ss, "board_comments", ["게시글ID", "작성자", "내용", "날짜"]);
-  // [신규 - 단계 4-3] 신고 시트: 3표(가중치 합 3) 이상이면 자동 숨김
-  var boardReportsSheet = getOrCreateSheet(ss, "board_reports", ["게시글ID", "신고자", "신고자가중치", "신고일"]);
-  var boardCmtReportsSheet = getOrCreateSheet(ss, "board_comment_reports", ["게시글ID", "댓글작성자", "댓글일시", "신고자", "신고자가중치", "신고일"]);
-  // [신규 2026-04-20] 단속 떴다 신고 시트 — 30분 내 신고만 인포윈도우에 표시. 랭킹엔 영구 반영(+2.5점)
-  var crackdownSheet = getOrCreateSheet(ss, "crackdown_reports", ["대상ID", "작성자", "신고일", "비번"]);
-
+  // [수정 2026-04-20] 시트 초기화도 try 안쪽에서 → 어떤 예외든 JSON으로 리턴해 CORS 블럭 방지
   try {
-    if (p.type === "get_board") return handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet);
+    e = e || { parameter: {} };
+    var p = e.parameter;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var mainSheet = ss.getSheets()[0];
+    var userSheet = getOrCreateSheet(ss, "users", ["아이디", "비밀번호"]);
+    var boardSheet = getOrCreateSheet(ss, "board", ["ID", "작성자", "제목", "본문", "이미지URL", "링크", "날짜", "비번", "조회수", "추천수"]);
+    var commentSheet = getOrCreateSheet(ss, "comments", ["대상ID", "작성자", "내용", "별점", "날짜"]);
+    var boardCommentSheet = getOrCreateSheet(ss, "board_comments", ["게시글ID", "작성자", "내용", "날짜"]);
+    // [신규 - 단계 4-3] 신고 시트: 3표(가중치 합 3) 이상이면 자동 숨김
+    var boardReportsSheet = getOrCreateSheet(ss, "board_reports", ["게시글ID", "신고자", "신고자가중치", "신고일"]);
+    var boardCmtReportsSheet = getOrCreateSheet(ss, "board_comment_reports", ["게시글ID", "댓글작성자", "댓글일시", "신고자", "신고자가중치", "신고일"]);
+    // [신규 2026-04-20] 수다방 추천(좋아요) 시트 — 1인 1회 제약 (게시글ID+사용자)
+    var boardLikesSheet = getOrCreateSheet(ss, "board_likes", ["게시글ID", "사용자", "비번", "날짜"]);
+    // [신규 2026-04-20] 단속 떴다 신고 시트 — 30분 내 신고만 인포윈도우에 표시. 랭킹엔 영구 반영(+2.5점)
+    // 시트 생성 실패해도 앱은 돌아가도록 null 폴백
+    var crackdownSheet = null;
+    try { crackdownSheet = getOrCreateSheet(ss, "crackdown_reports", ["대상ID", "작성자", "신고일", "비번"]); }
+    catch (cdSheetErr) { console.warn("crackdown_reports 시트 초기화 실패:", cdSheetErr.toString()); }
+
+    if (p.type === "get_board") return handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet, boardLikesSheet);
+
+    // [신규 2026-04-20] 조회수 +1
+    if (p.type === "increment_view") {
+      var ivPid = String(p.post_id || "").trim();
+      if (!ivPid) return createResponse({res: "error", msg: "post_id 누락"});
+      var ivRows = boardSheet.getDataRange().getValues();
+      for (var ivI = 1; ivI < ivRows.length; ivI++) {
+        if (String(ivRows[ivI][0]) === ivPid) {
+          var ivCur = parseInt(ivRows[ivI][8]) || 0;
+          boardSheet.getRange(ivI + 1, 9).setValue(ivCur + 1);
+          return createResponse({res: "ok", viewCount: ivCur + 1});
+        }
+      }
+      return createResponse({res: "error", msg: "게시글을 찾지 못했어요"});
+    }
+
+    // [신규 2026-04-20] 게시글 추천 (1인 1회)
+    if (p.type === "add_like") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var lkPid = String(p.post_id || "").trim();
+      if (!lkPid) return createResponse({res: "error", msg: "post_id 누락"});
+      var lkRows = boardLikesSheet.getDataRange().getValues();
+      for (var lkI = 1; lkI < lkRows.length; lkI++) {
+        if (String(lkRows[lkI][0]) === lkPid && String(lkRows[lkI][1]) === String(p.user)) {
+          return createResponse({res: "error", msg: "이미 이 게시글을 추천하셨습니다."});
+        }
+      }
+      boardLikesSheet.appendRow([lkPid, p.user, p.pw, new Date()]);
+      // 추천수 카운트 (게시판 시트에도 동기화, 선택적)
+      var lkCount = 1;
+      for (var lkI2 = 1; lkI2 < lkRows.length; lkI2++) {
+        if (String(lkRows[lkI2][0]) === lkPid) lkCount++;
+      }
+      // boardSheet 의 10열(추천수)도 동기화
+      var bRowsForLike = boardSheet.getDataRange().getValues();
+      for (var bLk = 1; bLk < bRowsForLike.length; bLk++) {
+        if (String(bRowsForLike[bLk][0]) === lkPid) {
+          boardSheet.getRange(bLk + 1, 10).setValue(lkCount);
+          break;
+        }
+      }
+      return createResponse({res: "ok", likeCount: lkCount});
+    }
+
+    // [신규 2026-04-20] 특정 사용자가 추천한 게시글 ID 목록 (프론트 UI 상태 표시용)
+    if (p.type === "get_my_likes") {
+      var myUser = String(p.user || "").trim();
+      if (!myUser) return createResponse([]);
+      var mylRows = boardLikesSheet.getDataRange().getValues();
+      var ids = [];
+      for (var mli = 1; mli < mylRows.length; mli++) {
+        if (String(mylRows[mli][1]) === myUser) ids.push(String(mylRows[mli][0]));
+      }
+      return createResponse(ids);
+    }
 
     // [신규 - 단계 2] 랭킹 조회 (+ 단속 신고 점수 합산)
     if (p.type === "get_ranking") return handleRanking(mainSheet, commentSheet, crackdownSheet);
@@ -495,11 +558,21 @@ function handleFetch(p, mainSheet, commentSheet, crackdownSheet) {
   }
 }
 
-function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet) {
+function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet, boardLikesSheet) {
   var posts = boardSheet.getDataRange().getValues().slice(1).reverse();
   var allCmts = boardCommentSheet.getDataRange().getValues().length > 1
     ? boardCommentSheet.getDataRange().getValues().slice(1)
     : [];
+
+  // [신규 2026-04-20] 추천수 집계 (board_likes 기준 — 게시판 시트와 동기화되지 않더라도 정확)
+  var likesMap = {};
+  if (boardLikesSheet) {
+    var lkAllRows = boardLikesSheet.getDataRange().getValues();
+    for (var lkA = 1; lkA < lkAllRows.length; lkA++) {
+      var lkId = String(lkAllRows[lkA][0]);
+      likesMap[lkId] = (likesMap[lkId] || 0) + 1;
+    }
+  }
 
   // [신규 - 단계 4-3] 신고 가중치 합산 (3 이상이면 숨김)
   var postReportMap = {};  // postId → 가중치 합
@@ -543,6 +616,9 @@ function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boar
       content: pos[3],
       imageUrl: pos[4],
       date: pos[6],
+      // [신규 2026-04-20] 조회수·추천수 노출 (구 스키마 방어: 빈 셀이면 0)
+      viewCount: parseInt(pos[8]) || 0,
+      likeCount: likesMap[String(postId)] || parseInt(pos[9]) || 0,
       // [수정] date 포함 (삭제·신고 식별용). ISO 문자열로 통일.
       comments: matched.map(function(c) {
         var d = c[3] instanceof Date ? c[3].toISOString() : String(c[3]);

@@ -54,8 +54,8 @@
 
     <div id="map"></div>
 
-    <!-- [신규 2026-04-20] 좌측 플로팅 위젯 — 현재 위치 기준 가까운 주차 5곳 -->
-    <div id="nearby-widget" class="map-widget map-widget-left hidden">
+    <!-- [신규 2026-04-20] 좌측 상단 위젯 — 현재 위치 기준 가까운 주차 5곳 -->
+    <div id="nearby-widget" class="map-widget map-widget-left-top hidden">
         <div class="map-widget-header" onclick="toggleWidget('nearby-widget')">
             <span>📍 가까운 주차</span>
             <span class="map-widget-chevron">▾</span>
@@ -63,13 +63,28 @@
         <div id="nearby-list" class="map-widget-body"></div>
     </div>
 
-    <!-- [신규 2026-04-20] 우측 플로팅 위젯 — 최근 수다방 5개 -->
-    <div id="recent-board-widget" class="map-widget map-widget-right hidden">
+    <!-- [재배치 2026-04-20] 좌측 하단으로 이동 — 최근 수다방 5개 (우측은 광고 영역으로 할당) -->
+    <div id="recent-board-widget" class="map-widget map-widget-left-bottom hidden">
         <div class="map-widget-header" onclick="toggleWidget('recent-board-widget')">
             <span>💬 최근 수다</span>
             <span class="map-widget-chevron">▾</span>
         </div>
         <div id="recent-board-list" class="map-widget-body"></div>
+    </div>
+
+    <!-- [신규 2026-04-20] 우측 광고 영역 — 애드센스 투입 전 환영 문구 플레이스홀더 -->
+    <div id="ad-widget" class="map-widget map-widget-right hidden ad-slot">
+        <div class="map-widget-header ad-header" onclick="toggleWidget('ad-widget')">
+            <span>✨ 안내</span>
+            <span class="map-widget-chevron">▾</span>
+        </div>
+        <div class="map-widget-body ad-body">
+            <div class="ad-placeholder">
+                <div class="ad-welcome-title">거지주차에 오신 것을<br>환영합니다</div>
+                <div class="ad-welcome-sub">오늘도 안전운전<br>짠내운전 🚗💨</div>
+                <div class="ad-placeholder-tag">Ad</div>
+            </div>
+        </div>
     </div>
 
     <div id="floating-menu">
@@ -103,6 +118,29 @@
             <div class="modal-btns">
                 <button onclick="submitReport()" class="btn-save">정보 저장</button>
                 <button onclick="closeModal()" class="btn-cancel">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [신규 2026-04-20] 첫 진입 공지 모달 — 하루 한 번만 표시 (localStorage) -->
+    <div id="notice-modal" class="hidden">
+        <div class="notice-content">
+            <div class="notice-header">
+                <h3>🚗 거지주차에 오신 것을 환영합니다</h3>
+            </div>
+            <div class="notice-body">
+                <p><b>거지주차.com</b>은 수도권 주차난에 매일매일 허덕이는 우리 서민 운전자들을 위해 만들어졌습니다.</p>
+                <p>비싼 주차비에 지갑이 홀쭉해지기 전에, <b>여러분의 집단지성</b>만이 우리의 지갑을 구할 수 있어요. 숨겨둔 명당, 밤샘 무료 꿀자리, "여기 주차해도 돼?" 싶었던 그 자리 — 아낌없이 공유해주세요.</p>
+                <p>본 서비스는 온라인을 수놓았던 <b>&lt;거지맵&gt;</b>에서 영감을 받아 만들어졌습니다. 아직 <b>초기 서비스</b>라 여기저기 삐걱거릴 수 있지만, 매일같이 다듬어가고 있으니 너그러이 지켜봐 주세요.</p>
+                <p class="notice-punchline">"한 푼이라도 아껴야<br>하루가 든든한 거지주차 시민 여러분, 오늘도 안전운전 짠내운전!"</p>
+                <p class="notice-signature">- 주인장 쌍칼 -</p>
+            </div>
+            <div class="notice-footer">
+                <label class="notice-dismiss-label">
+                    <input type="checkbox" id="notice-dismiss-today">
+                    <span>오늘은 더 이상 보지 말기</span>
+                </label>
+                <button onclick="closeNotice()" class="notice-close-btn">닫기</button>
             </div>
         </div>
     </div>
