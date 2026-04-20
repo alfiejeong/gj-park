@@ -1416,11 +1416,47 @@ async function deletePost(postId) {
     } catch (e) { alert("통신 오류"); } finally { toggleLoading(false); }
 }
 
+// [신규 2026-04-20] 사용자가 지도에 위치를 찍을 때 표시되는 Pick 마커 (임시 선택 위치)
+// - 일반 주차장 마커(노란 역물방울)와 확실히 차별화 → 빨간/핑크 타겟 모양 + "여기!" 라벨
+// - 위아래 바운싱(bob) 애니메이션 + 초기 드롭인 결합
+function buildPickMarkerContent() {
+    return `<div class="gj-pick-marker gj-pick-drop">
+        <div class="gj-pick-pulse"></div>
+        <svg class="gj-pick-svg" viewBox="0 0 40 52" width="40" height="52" aria-hidden="true">
+            <!-- 그림자 -->
+            <ellipse cx="20" cy="49" rx="9" ry="2.2" fill="rgba(0,0,0,0.28)"/>
+            <!-- 막대(핀 스탠드) -->
+            <line x1="20" y1="30" x2="20" y2="47" stroke="#1c2633" stroke-width="2.5" stroke-linecap="round"/>
+            <!-- 외곽 원(빨간 링) -->
+            <circle cx="20" cy="18" r="14" fill="#FF3B30" stroke="#1c2633" stroke-width="2.5"/>
+            <!-- 타겟 링 -->
+            <circle cx="20" cy="18" r="9" fill="none" stroke="#FFF" stroke-width="2"/>
+            <!-- 중앙 도트 -->
+            <circle cx="20" cy="18" r="3.5" fill="#FFF"/>
+            <!-- 크로스헤어 -->
+            <line x1="20" y1="3" x2="20" y2="8" stroke="#FFF" stroke-width="2" stroke-linecap="round"/>
+            <line x1="20" y1="28" x2="20" y2="33" stroke="#FFF" stroke-width="2" stroke-linecap="round"/>
+            <line x1="5" y1="18" x2="10" y2="18" stroke="#FFF" stroke-width="2" stroke-linecap="round"/>
+            <line x1="30" y1="18" x2="35" y2="18" stroke="#FFF" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <div class="gj-pick-label">여기!</div>
+    </div>`;
+}
+
 function setupEvents() {
     naver.maps.Event.addListener(map, 'click', (e) => {
         if (currentInfo) currentInfo.close();
         if (pickMarker) pickMarker.setMap(null);
-        pickMarker = new naver.maps.Marker({ position: e.coord, map: map });
+        pickMarker = new naver.maps.Marker({
+            position: e.coord,
+            map: map,
+            icon: {
+                content: buildPickMarkerContent(),
+                // 마커 끝(핀 스탠드 바닥)이 클릭 지점에 정확히 닿도록 앵커 설정
+                anchor: new naver.maps.Point(20, 52)
+            },
+            zIndex: 300
+        });
         naver.maps.Service.reverseGeocode({ coords: e.coord, orders: [naver.maps.Service.OrderType.ADDR, naver.maps.Service.OrderType.ROAD_ADDR].join(',') }, (status, res) => {
             if (status === naver.maps.Service.Status.OK) { addrStr = res.v2.address.roadAddress || res.v2.address.jibunAddress; }
         });
@@ -1510,4 +1546,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};

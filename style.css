@@ -143,6 +143,84 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
     75%      { transform: scale(1.08) rotate(4deg); }
 }
 
+/* =================================================== */
+/* [신규 2026-04-20] Pick 마커 — 사용자가 위치를 찍을 때 표시        */
+/*   - 일반 마커(노란 핀)와 확실히 차별화: 빨간 타겟 크로스헤어      */
+/*   - 초기: 위에서 떨어지는 드롭 + 이후 계속 위아래 바운스          */
+/*   - "여기!" 말풍선 라벨 + 확산 펄스 링으로 시선 집중               */
+/* =================================================== */
+.gj-pick-marker {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: auto;
+    min-width: 40px;
+    /* 드롭인 이후 계속 바운스: delay로 드롭 완료 후 바운스 시작 */
+    animation: gjPickBob 1.3s ease-in-out 0.6s infinite;
+    transform-origin: center bottom;
+    will-change: transform;
+}
+/* 드롭인: 초기 한 번만 실행 (both로 종료 상태 유지) */
+.gj-pick-drop {
+    animation: gjPickDrop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+               gjPickBob  1.3s ease-in-out 0.6s infinite;
+}
+@keyframes gjPickDrop {
+    0%   { transform: translateY(-260px) scale(0.3); opacity: 0; }
+    60%  { transform: translateY(10px)   scale(1.1); opacity: 1; }
+    78%  { transform: translateY(-6px)   scale(0.97); }
+    100% { transform: translateY(0)      scale(1); opacity: 1; }
+}
+/* 바운스: 위아래로 계속 움직임 */
+@keyframes gjPickBob {
+    0%, 100% { transform: translateY(0)    scale(1); }
+    50%      { transform: translateY(-10px) scale(1.04); }
+}
+
+.gj-pick-svg {
+    filter: drop-shadow(0 3px 4px rgba(255, 59, 48, 0.5));
+    display: block;
+    position: relative;
+    z-index: 2;
+}
+
+/* "여기!" 라벨 — 핀 아래 쪽에 작게 */
+.gj-pick-label {
+    margin-top: -4px;
+    background: #FF3B30;
+    color: #fff;
+    border: 2px solid #1c2633;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 900;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+    letter-spacing: -0.3px;
+    position: relative;
+    z-index: 3;
+}
+
+/* 확산 펄스 링 — 마커 뒤쪽에서 계속 퍼져나감 */
+.gj-pick-pulse {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    width: 30px;
+    height: 30px;
+    margin-left: -15px;
+    border-radius: 50%;
+    background: rgba(255, 59, 48, 0.5);
+    animation: gjPickPulse 1.6s ease-out infinite;
+    z-index: 1;
+    pointer-events: none;
+}
+@keyframes gjPickPulse {
+    0%   { transform: scale(0.6); opacity: 0.7; }
+    100% { transform: scale(2.4); opacity: 0; }
+}
+
 /* [수정] saving-modal: hidden 클래스가 display:none !important를 적용하므로
    기본 상태에서는 display를 지정하지 않음. toggleLoading()에서 JS로 직접 제어함. */
 #saving-modal.hidden { display: none !important; }
