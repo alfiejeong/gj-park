@@ -30,6 +30,10 @@ function doGet(e) {
     var boardCmtReportsSheet = getOrCreateSheet(ss, "board_comment_reports", ["게시글ID", "댓글작성자", "댓글일시", "신고자", "신고자가중치", "신고일"]);
     // [신규 2026-04-20] 수다방 추천(좋아요) 시트 — 1인 1회 제약 (게시글ID+사용자)
     var boardLikesSheet = getOrCreateSheet(ss, "board_likes", ["게시글ID", "사용자", "비번", "날짜"]);
+    // [신규 2026-04-20] 방문자 카운터 시트 — 단일 row로 누적 카운트 관리
+    var visitorSheet = null;
+    try { visitorSheet = getOrCreateSheet(ss, "visitors", ["키", "값"]); }
+    catch (vsErr) { console.warn("visitors 시트 초기화 실패:", vsErr.toString()); }
     // [신규 2026-04-20] 단속 떴다 신고 시트 — 30분 내 신고만 인포윈도우에 표시. 랭킹엔 영구 반영(+2.5점)
     // 시트 생성 실패해도 앱은 돌아가도록 null 폴백
     var crackdownSheet = null;
@@ -97,6 +101,28 @@ function doGet(e) {
 
     // [신규 - 단계 2] 랭킹 조회 (+ 단속 신고 점수 합산)
     if (p.type === "get_ranking") return handleRanking(mainSheet, commentSheet, crackdownSheet);
+
+    // [신규 2026-04-20] 방문자 수 조회 / +1 증가
+    // - GET ?type=visitor_count         → 현재 값 반환만
+    // - GET ?type=visitor_count&inc=1   → 값 +1 후 반환 (세션당 1회만 호출되도록 프론트에서 제어)
+    if (p.type === "visitor_count") {
+      if (!visitorSheet) return createResponse({res: "ok", total: 0});
+      var vRows = visitorSheet.getDataRange().getValues();
+      var vRowIdx = -1, vTotal = 0;
+      for (var vi = 1; vi < vRows.length; vi++) {
+        if (String(vRows[vi][0]) === "total") { vRowIdx = vi; vTotal = parseInt(vRows[vi][1]) || 0; break; }
+      }
+      if (vRowIdx < 0) {
+        visitorSheet.appendRow(["total", 0]);
+        vRowIdx = visitorSheet.getLastRow() - 1;
+        vTotal = 0;
+      }
+      if (String(p.inc || "") === "1") {
+        vTotal += 1;
+        visitorSheet.getRange(vRowIdx + 1, 2).setValue(vTotal);
+      }
+      return createResponse({res: "ok", total: vTotal});
+    }
 
     if (p.type === "add_board_comment") {
       if (!checkUser(userSheet, p.user, p.pw)) {
@@ -169,7 +195,7 @@ function doGet(e) {
             && String(cdRows[ci2][1]) === String(p.user)) {
           var cdAt = cdRows[ci2][2] instanceof Date ? cdRows[ci2][2].getTime() : new Date(cdRows[ci2][2]).getTime();
           if (cdNow - cdAt < CD_WINDOW) {
-            return createResponse({res: "error", msg: "이미 최근 30분 내에 이 장소를 단속 신고하셨습니다."});
+            return createResponse({res: "error", msg: "이미 최근 30분 내에 이 장소에 주차 주의를 등록하셨습니다."});
           }
         }
       }

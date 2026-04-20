@@ -30,7 +30,7 @@ var userLocWatchId = null;     // [신규 2026-04-20] watchPosition 핸들 ID
 var boardSearchTerm = '';      // [신규 2026-04-20] 수다방 검색어 (제목·본문·작성자 필터)
 var boardSearchDebounceId = null;
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwXqN9j6dcpU9vnukBa22pPqIdzNGXD7Adll5fyWPYfh5wbWzFJWSK-i35AlCpQj2c/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxYHHP7MVtMmSl8MclBj4fP_kZeF7HfEQbfoImGjbSI77tA27DcwpFJTEhinb-ndWPi/exec";
 
 // [신규 2026-04-20] 주차장 기본 이미지 (인라인 SVG 데이터 URI) — 업로드된 이미지가 없거나 로드 실패 시 대체용
 const DEFAULT_PARKING_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
@@ -580,18 +580,45 @@ function hideSplashScreen() {
             console.log("✨ 모든 준비 완료. 지도 공개");
             // [신규 2026-04-20] 스플래시가 닫힌 뒤 공지 모달 노출 (하루 1회)
             maybeShowNotice();
+            // [신규 2026-04-20] 방문자 카운터 초기화 (세션당 1회 +1)
+            initVisitorCounter();
         }, 500);
     }
+}
+
+// [신규 2026-04-20] 방문자 수 위젯 — 세션당 1회만 +1, 총 누적 표시
+function initVisitorCounter() {
+    const widget = document.getElementById('visitor-counter');
+    const numEl = document.getElementById('visitor-counter-num');
+    if (!widget || !numEl) return;
+    widget.classList.remove('hidden');
+
+    // 세션당 1회 증가: sessionStorage 플래그로 중복 방지 (새 탭/새 세션에만 +1)
+    let alreadyIncreased = false;
+    try { alreadyIncreased = sessionStorage.getItem('gj-visited') === '1'; } catch (e) {}
+    const incParam = alreadyIncreased ? '' : '&inc=1';
+
+    fetch(`${SCRIPT_URL}?type=visitor_count${incParam}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data && typeof data.total === 'number') {
+                numEl.textContent = data.total.toLocaleString('ko-KR');
+                if (!alreadyIncreased) {
+                    try { sessionStorage.setItem('gj-visited', '1'); } catch (e) {}
+                }
+            }
+        })
+        .catch(() => { numEl.textContent = '–'; });
 }
 
 // [리뉴얼 2026-04-20] 마커 콘텐츠 빌더 — 역물방울 핀 / 고슴도치 단속 마커
 function buildMarkerContent(item) {
     if (item.crackdownActive) {
-        return `<div class="gj-crackdown-marker gj-marker-drop" title="단속 떴다 — 30분 내 신고됨">
+        return `<div class="gj-crackdown-marker gj-marker-drop" title="주차 주의 — 30분 내 신고됨">
             <div class="gj-spiky-bg"></div>
             <div class="gj-spiky-text">
-                <span class="siren">🚨</span>
-                <span class="danso">단속</span>
+                <span class="siren">⚠️</span>
+                <span class="danso">주의</span>
             </div>
         </div>`;
     }
@@ -678,8 +705,8 @@ function attachInfoWindow(marker, item) {
         ? Math.max(0, 30 - Math.floor((Date.now() - new Date(item.crackdownAt).getTime()) / 60000))
         : 0;
     const crackdownBadge = item.crackdownActive
-        ? `<span class="crackdown-badge" title="30분 내 단속 신고됨 · ${crackdownMinLeft}분 남음">
-             <span class="crackdown-q">?</span> 단속 떴다
+        ? `<span class="crackdown-badge" title="30분 내 주의 신고됨 · ${crackdownMinLeft}분 남음">
+             <span class="crackdown-q">!</span> 주차 주의
            </span>`
         : '';
 
@@ -727,8 +754,8 @@ function attachInfoWindow(marker, item) {
                 </div>
             </div>
 
-            <!-- [신규 2026-04-20] 단속 떴다 등록 버튼 — 후기와 별개. 누르면 닉/비번 입력 후 30분간 경고 배지 노출 -->
-            <button onclick="submitCrackdown('${nameEsc}')" class="crackdown-btn">🚨 단속 떴다 등록</button>
+            <!-- [신규 2026-04-20] 주차 주의 등록 버튼 — 후기와 별개. 누르면 닉/비번 입력 후 30분간 경고 배지 노출 -->
+            <button onclick="submitCrackdown('${nameEsc}')" class="crackdown-btn">⚠️ 주차 주의 등록</button>
 
             <!-- [신규 2026-04-20] 광고 영역 — 애드센스 투입 전 환영 문구 -->
             <div class="infowindow-ad">
@@ -792,7 +819,8 @@ async function sendFeedback(targetName) {
     }
 }
 
-// [신규 2026-04-20] 단속 떴다 등록 — 별점/후기와 별개로 30분간 경고 노출, 랭킹엔 +2.5점
+// [수정 2026-04-20] 주차 주의 등록 — 별점/후기와 별개로 30분간 경고 노출, 랭킹엔 +2.5점
+// (내부 API 이름 add_crackdown은 유지, UI 문구만 '단속' → '주차 주의'로 순화)
 async function submitCrackdown(targetName) {
     const savedNick = localStorage.getItem('gj-nick') || '';
     const nick = prompt("닉네임을 입력하세요.", savedNick);
@@ -800,16 +828,16 @@ async function submitCrackdown(targetName) {
     const pw = prompt(`[${nick}] 님의 비밀번호를 입력하세요.\n\n(후기 등록 시 쓰던 비번과 동일해야 해요)`);
     if (!pw) return;
 
-    if (!confirm(`"${targetName}"에 단속이 떴다고 등록할까요?\n\n30분간 다른 사용자에게 🚨 경고 배지가 표시됩니다.\n허위 등록은 제재 대상이 될 수 있어요.`)) return;
+    if (!confirm(`"${targetName}"에 "주차 주의"를 등록할까요?\n\n30분간 다른 사용자에게 ⚠️ 경고 배지가 표시됩니다.\n허위 등록은 제재 대상이 될 수 있어요.`)) return;
 
-    toggleLoading(true, "단속 신고 등록 중...");
+    toggleLoading(true, "주차 주의 등록 중...");
     try {
         const q = new URLSearchParams({ type: "add_crackdown", target_id: targetName, user: nick, pw: pw });
         const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
         const result = await res.json();
         if (result.res === "ok") {
             localStorage.setItem('gj-nick', nick);
-            alert("🚨 단속 신고가 접수되었습니다. 30분간 다른 사용자에게 경고 배지가 표시돼요.\n(랭킹 +2.5점)");
+            alert("⚠️ 주차 주의가 접수되었습니다. 30분간 다른 사용자에게 경고 배지가 표시돼요.\n(랭킹 +2.5점)");
             location.reload();
         } else {
             alert("오류: " + (result.msg || "등록 실패"));
@@ -1461,12 +1489,10 @@ function buildPickMarkerContent() {
 // - 파란 팔레트(빨간 Pick·노란 주차 마커와 충돌 안 함)
 // - 자동차 이모티콘이 들어간 둥근 배지 + 확산 accuracy 링
 // - watchPosition으로 라이브 업데이트
+// [수정 2026-04-20] 내 위치 마커 — 파란 원·펄스링 모두 제거, 작은 🚗 아이콘만 노출 (주차 마커 가림 방지)
 function buildUserLocMarkerContent() {
     return `<div class="gj-userloc-marker">
-        <div class="gj-userloc-accuracy"></div>
-        <div class="gj-userloc-badge">
-            <span class="gj-userloc-car">🚗</span>
-        </div>
+        <span class="gj-userloc-car">🚗</span>
     </div>`;
 }
 
@@ -1479,8 +1505,8 @@ function updateUserLocMarker(lat, lng) {
             map: map,
             icon: {
                 content: buildUserLocMarkerContent(),
-                // 배지 정중앙이 실제 좌표와 일치하도록 앵커 설정 (SVG 크기 60x60 중심)
-                anchor: new naver.maps.Point(30, 30)
+                // 작은 🚗 정중앙이 실제 좌표와 일치 (22x22 중심)
+                anchor: new naver.maps.Point(11, 11)
             },
             zIndex: 250,
             clickable: false
