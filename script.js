@@ -33,7 +33,7 @@ var boardSearchDebounceId = null;
 var clusterMarkers = [];
 var clusterUpdateScheduled = false;
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLZsRUlPioHya8sBckOarDHH7ABdpFwWUV6KfCoovU2SZt2m4Q4Hbzsc3QcJQC6RQ/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyU0Fk_tjhFe70Vlfb78JsfVY5-AIVoKQOxLtAVgmIeQxj9_SQDtVDrz_HUty1yGJn8/exec";
 
 // [신규 2026-04-20] 주차장 기본 이미지 (인라인 SVG 데이터 URI) — 업로드된 이미지가 없거나 로드 실패 시 대체용
 const DEFAULT_PARKING_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
@@ -469,13 +469,20 @@ function renderNearbyWidget() {
         }
     }
 
-    // [신규 2026-04-20] 기준점: 지도 중심 우선, 지도가 아직 준비 전이면 내 위치 폴백
+    // [수정 2026-04-20] 기준점: 지도 중심 우선. Naver LatLng는 .lat()/.lng() 메서드가 표준.
+    //   모바일에서는 터치 이동 후 idle 이벤트가 늦게/간헐적으로 발생하는 경우가 있으므로
+    //   .lat()/.lng() 메서드를 우선 호출해서 어떤 구현체에서도 안전하게 값을 뽑아냄.
     let refLat = null, refLng = null;
-    if (map && map.getCenter) {
-        const c = map.getCenter();
-        refLat = c.y !== undefined ? c.y : c.lat();
-        refLng = c.x !== undefined ? c.x : c.lng();
-    } else if (currentUserPos) {
+    if (map && typeof map.getCenter === 'function') {
+        try {
+            const c = map.getCenter();
+            if (c) {
+                refLat = typeof c.lat === 'function' ? c.lat() : (c.y !== undefined ? c.y : c._lat);
+                refLng = typeof c.lng === 'function' ? c.lng() : (c.x !== undefined ? c.x : c._lng);
+            }
+        } catch (e) { console.warn('getCenter failed:', e); }
+    }
+    if ((refLat === null || refLng === null) && currentUserPos) {
         refLat = currentUserPos.lat;
         refLng = currentUserPos.lng;
     }
@@ -565,7 +572,15 @@ function openBoardAtPost(postId) {
 // [신규 2026-04-20] 위젯 접기/펴기 토글
 function toggleWidget(id) {
     const el = document.getElementById(id);
-    if (el) el.classList.toggle('collapsed');
+    if (el) {
+        el.classList.toggle('collapsed');
+        // [신규 2026-04-20] 펼칠 때 최신 화면 중심 기준으로 재렌더
+        //   모바일은 평상시 접힘 상태 → 펼치는 순간이 실제로 사용자가 목록을 보는 순간이므로
+        //   idle 이벤트가 묻혔더라도 여기서 반드시 최신화
+        if (id === 'nearby-widget' && !el.classList.contains('collapsed')) {
+            renderNearbyWidget();
+        }
+    }
 }
 
 // [신규 2026-04-20] 지도 위젯 보이기/숨기기 (수다방·랭킹 페이지 이동 시)
@@ -594,7 +609,12 @@ function setupMap(lat, lng) {
     naver.maps.Event.addListener(map, 'zoom_changed', scheduleClusterUpdate);
     naver.maps.Event.addListener(map, 'idle', scheduleClusterUpdate);
     // [신규 2026-04-20] 지도 이동·줌 변경 시 '가까운 주차'도 재계산 (기준점이 화면 중심이므로)
+    //   [수정 2026-04-20] 모바일 터치 드래그 종료 시 idle이 간헐 누락되는 케이스 대비
+    //   → dragend + zoom_changed + idle + center_changed 모두 훅
     naver.maps.Event.addListener(map, 'idle', renderNearbyWidget);
+    naver.maps.Event.addListener(map, 'dragend', renderNearbyWidget);
+    naver.maps.Event.addListener(map, 'zoom_changed', renderNearbyWidget);
+    naver.maps.Event.addListener(map, 'center_changed', renderNearbyWidget);
     setupEvents();
 }
 

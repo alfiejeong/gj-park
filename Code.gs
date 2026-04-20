@@ -511,49 +511,71 @@ function handleFetch(p, mainSheet, commentSheet, crackdownSheet) {
     }
 
     // [수정] 서울시 API: HTTP 환원, 응답 구조 안전 체크 + 진단 모드
+    // [신규 2026-04-20] CacheService로 10분 TTL 캐시 → 외부 API 왕복(1~3초) 제거해 로딩 속도 개선
     if (p.type === "seoul") {
-      // [갱신 2026-04-20] 서울 열린데이터광장 인증키 재발급 (이전 키 인증 실패)
-      // [재수정 2026-04-20] HTTPS(8088)는 TLS 구버전 때문에 최신 Chrome/UrlFetchApp에서
-      //   ERR_SSL_PROTOCOL_ERROR 발생 → HTTP로 환원.
       var url = "http://openapi.seoul.go.kr:8088/48464f6b62616c663130336f6d695477/json/GetParkInfo/1/1000/";
-      // [신규 2026-04-20] 디버그 모드: ?type=seoul&debug=1 → 원본 응답/에러 JSON으로 노출
       var debugMode = String(p.debug || "") === "1";
       try {
-        // muteHttpExceptions: true → HTTP 4xx/5xx도 예외 없이 body 읽을 수 있게
-        var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
-        var statusCode = res.getResponseCode();
-        var bodyText = res.getContentText();
-        var parsed;
-        try { parsed = JSON.parse(bodyText); }
-        catch (parseErr) {
-          if (debugMode) return createResponse({ stage: "parse", statusCode: statusCode, bodyPreview: String(bodyText).substring(0, 500), error: parseErr.toString() });
-          console.warn("서울시 API JSON 파싱 실패:", parseErr.toString(), " body:", String(bodyText).substring(0, 200));
-          return createResponse([]);
+        // [신규] 파싱·필터링 끝난 slim 데이터만 캐시 (원본 ~500KB라 CacheService 100KB 한도 초과 방지)
+        //   후기/단속은 캐시 안 씀 → 매 호출 시 별도 병합으로 최신 유지
+        var seoulCache = CacheService.getScriptCache();
+        var cacheKey = 'seoul_base_v1';
+        var cachedStr = debugMode ? null : seoulCache.get(cacheKey);
+        var seoulBase = null;
+        if (cachedStr) {
+          try { seoulBase = JSON.parse(cachedStr); }
+          catch (e) { seoulBase = null; }
         }
 
-        if (debugMode) {
-          return createResponse({
-            stage: "ok",
-            statusCode: statusCode,
-            topKeys: Object.keys(parsed || {}),
-            resultCode: parsed && parsed.GetParkInfo && parsed.GetParkInfo.RESULT ? parsed.GetParkInfo.RESULT.CODE : (parsed && parsed.RESULT ? parsed.RESULT.CODE : null),
-            resultMsg:  parsed && parsed.GetParkInfo && parsed.GetParkInfo.RESULT ? parsed.GetParkInfo.RESULT.MESSAGE : (parsed && parsed.RESULT ? parsed.RESULT.MESSAGE : null),
-            totalCount: parsed && parsed.GetParkInfo ? parsed.GetParkInfo.list_total_count : null,
-            rowLen: parsed && parsed.GetParkInfo && parsed.GetParkInfo.row ? parsed.GetParkInfo.row.length : 0,
-            firstRow: parsed && parsed.GetParkInfo && parsed.GetParkInfo.row && parsed.GetParkInfo.row[0] ? parsed.GetParkInfo.row[0] : null,
-            bodyPreview: String(bodyText).substring(0, 300)
-          });
+        if (!seoulBase) {
+          var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+          var statusCode = res.getResponseCode();
+          var bodyText = res.getContentText();
+          var parsed;
+          try { parsed = JSON.parse(bodyText); }
+          catch (parseErr) {
+            if (debugMode) return createResponse({ stage: "parse", statusCode: statusCode, bodyPreview: String(bodyText).substring(0, 500), error: parseErr.toString() });
+            console.warn("서울시 API JSON 파싱 실패:", parseErr.toString(), " body:", String(bodyText).substring(0, 200));
+            return createResponse([]);
+          }
+
+          if (debugMode) {
+            return createResponse({
+              stage: "ok",
+              statusCode: statusCode,
+              topKeys: Object.keys(parsed || {}),
+              resultCode: parsed && parsed.GetParkInfo && parsed.GetParkInfo.RESULT ? parsed.GetParkInfo.RESULT.CODE : (parsed && parsed.RESULT ? parsed.RESULT.CODE : null),
+              resultMsg:  parsed && parsed.GetParkInfo && parsed.GetParkInfo.RESULT ? parsed.GetParkInfo.RESULT.MESSAGE : (parsed && parsed.RESULT ? parsed.RESULT.MESSAGE : null),
+              totalCount: parsed && parsed.GetParkInfo ? parsed.GetParkInfo.list_total_count : null,
+              rowLen: parsed && parsed.GetParkInfo && parsed.GetParkInfo.row ? parsed.GetParkInfo.row.length : 0,
+              firstRow: parsed && parsed.GetParkInfo && parsed.GetParkInfo.row && parsed.GetParkInfo.row[0] ? parsed.GetParkInfo.row[0] : null,
+              bodyPreview: String(bodyText).substring(0, 300)
+            });
+          }
+
+          if (!parsed.GetParkInfo || !parsed.GetParkInfo.row) {
+            console.warn("서울시 API 응답 구조 이상:", JSON.stringify(parsed).substring(0, 300));
+            return createResponse([]);
+          }
+
+          // 필요한 필드만 추려서 slim 캐시 저장
+          seoulBase = parsed.GetParkInfo.row
+            .filter(function(r) { return (r.PAY_YN === "N" || r.CHGD_FREE_NM === "무료") && r.LAT; })
+            .map(function(r) {
+              return {
+                name: r.PKLT_NM,
+                address: r.ADDR,
+                lat: parseFloat(r.LAT),
+                lng: parseFloat(r.LOT)
+              };
+            });
+
+          // 캐시에 저장 (10분). 100KB 초과 시 조용히 건너뜀
+          try { seoulCache.put(cacheKey, JSON.stringify(seoulBase), 600); }
+          catch (putErr) { console.warn("서울 캐시 저장 실패(크기 초과 가능):", putErr.toString()); }
         }
 
-        // 응답 구조 유효성 체크
-        if (!parsed.GetParkInfo || !parsed.GetParkInfo.row) {
-          console.warn("서울시 API 응답 구조 이상:", JSON.stringify(parsed).substring(0, 300));
-          return createResponse([]);
-        }
-
-        var rows = parsed.GetParkInfo.row;
-
-        // [신규 2026-04-20] 서울 응답에도 후기/평점 병합: commentSheet에서 PKLT_NM 매칭 후기 붙이고 평균 별점 재계산
+        // 후기/단속은 매 호출 시 최신 병합 (캐시 안 함)
         var seoulCmtRows = commentSheet.getDataRange().getValues();
         var seoulCmtByName = {};
         for (var sci = 1; sci < seoulCmtRows.length; sci++) {
@@ -567,20 +589,18 @@ function handleFetch(p, mainSheet, commentSheet, crackdownSheet) {
           });
         }
 
-        return createResponse(rows.filter(function(r) {
-          return (r.PAY_YN === "N" || r.CHGD_FREE_NM === "무료") && r.LAT;
-        }).map(function(r) {
-          var nm = String(r.PKLT_NM || '').trim();
+        return createResponse(seoulBase.map(function(b) {
+          var nm = String(b.name || '').trim();
           var cdInfo = activeCrackdowns[nm];
           var matched = seoulCmtByName[nm] || [];
           var totalRate = 0;
           for (var mi = 0; mi < matched.length; mi++) totalRate += parseFloat(matched[mi].rating || 0);
           var avg = matched.length > 0 ? (totalRate / matched.length).toFixed(1) : "0.0";
           return {
-            name: r.PKLT_NM, address: r.ADDR,
-            lat: parseFloat(r.LAT), lng: parseFloat(r.LOT),
+            name: b.name, address: b.address,
+            lat: b.lat, lng: b.lng,
             type: "무료", user: "서울시", desc: "공공데이터",
-            imageUrl: "", // [추가 2026-04-20] 공공데이터엔 이미지 없음 (프론트에서 기본 P 이미지로 대체)
+            imageUrl: "",
             avgRating: avg, comments: matched,
             crackdownActive: !!cdInfo,
             crackdownAt: cdInfo ? new Date(cdInfo.at).toISOString() : null,

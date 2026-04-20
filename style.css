@@ -560,31 +560,32 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
         display: none !important;
     }
 
-    /* 가까운 주차 — 헤더 바로 아래로, 반투명 + 진한 외곽선으로 시인성 업 */
+    /* 가까운 주차 — 헤더 바로 아래로, 반투명 + 진한 외곽선으로 시인성 업
+       [수정 2026-04-20] 투명도 50% 더 강화 (본체·타이틀·접힘 상태 모두) */
     .map-widget { width: 156px; font-size: 11px; }
     .map-widget-left-top {
         left: 10px;
         top: 66px;                                    /* 헤더(60px) 바로 아래 */
         max-height: 220px;
-        background: rgba(255, 255, 255, 0.82);        /* 반투명이되 대비 강화 */
+        background: rgba(255, 255, 255, 0.41);        /* 0.82 → 0.41 (50% ↓) */
         backdrop-filter: blur(6px) saturate(120%);
         -webkit-backdrop-filter: blur(6px) saturate(120%);
-        border: 1.5px solid rgba(28, 38, 51, 0.55);   /* 짙은 외곽선으로 지도 위에서도 또렷 */
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+        border: 1.5px solid rgba(28, 38, 51, 0.35);   /* 외곽선도 연하게 */
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
         border-radius: 14px;
     }
-    /* 기본 접힘 상태(.collapsed) — 헤더만 보이게, 반투명 */
+    /* 기본 접힘 상태(.collapsed) — 헤더만 보이게, 더욱 반투명 */
     .map-widget-left-top.collapsed {
         max-height: 34px;
-        background: rgba(255, 255, 255, 0.7);
+        background: rgba(255, 255, 255, 0.35);        /* 0.7 → 0.35 */
     }
     .map-widget-left-top .map-widget-body { max-height: 178px; }
     .map-widget-left-top .map-widget-header {
         padding: 8px 12px;
         font-size: 12px;
         font-weight: 800;
-        /* [수정 2026-04-20] 타이틀도 반투명 처리 — 지도 위에서 UI 위화감 최소화 */
-        background: rgba(255, 212, 0, 0.55);
+        /* 타이틀 노란색도 50% 더 투명하게: 0.55 → 0.27 */
+        background: rgba(255, 212, 0, 0.27);
         backdrop-filter: blur(4px);
         -webkit-backdrop-filter: blur(4px);
         color: #1c2633;
@@ -623,6 +624,7 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
         min-width: 0;
         font-size: 12px;
         line-height: 1.35;
+        text-align: center;       /* [수정 2026-04-20] Ad 태그 제거 후 본문 중앙정렬 */
     }
     #mobile-ad-banner .mab-title {
         font-weight: 800;
@@ -633,15 +635,6 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
     #mobile-ad-banner .mab-sub {
         color: #cfd8e3;
         font-size: 11px;
-    }
-    #mobile-ad-banner .mab-tag {
-        flex: 0 0 auto;
-        background: #FFD400;
-        color: #1c2633;
-        font-weight: 900;
-        font-size: 10px;
-        padding: 3px 8px;
-        border-radius: 6px;
     }
     /* 하단 배너 + floating-menu 겹침 방지 */
     #floating-menu {
