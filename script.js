@@ -1456,9 +1456,10 @@ async function deletePost(postId) {
 // - 위쪽은 넓고, 아래로 갈수록 홀쭉해져 끝점이 클릭한 지점을 정확히 가리킴
 // - 빨간색 컬러 팔레트 유지 + 드롭 애니메이션 + 위아래 바운스 + 확산 펄스
 function buildPickMarkerContent() {
+    // [수정 2026-04-20] 크기 3분의 2로 축소 — 40x56 → 27x37, 앵커도 비례 조정
     return `<div class="gj-pick-marker gj-pick-drop">
         <div class="gj-pick-pulse"></div>
-        <svg class="gj-pick-svg" viewBox="0 0 40 56" width="40" height="56" aria-hidden="true">
+        <svg class="gj-pick-svg" viewBox="0 0 40 56" width="27" height="37" aria-hidden="true">
             <!-- 바닥 그림자 -->
             <ellipse cx="20" cy="53" rx="6" ry="1.8" fill="rgba(0,0,0,0.3)"/>
             <!-- 아래로 뾰족해지는 화살표(넓은 머리 → 가늘어지는 몸통 → 끝점)
@@ -1542,8 +1543,8 @@ function setupEvents() {
             map: map,
             icon: {
                 content: buildPickMarkerContent(),
-                // 화살표 뾰족한 끝점이 클릭 지점에 정확히 닿도록 앵커 설정 (SVG 내 (20, 52))
-                anchor: new naver.maps.Point(20, 52)
+                // [수정 2026-04-20] 3분의 2 축소 → 화살표 끝점이 (13, 35)
+                anchor: new naver.maps.Point(13, 35)
             },
             zIndex: 300
         });
