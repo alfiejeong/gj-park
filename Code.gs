@@ -826,3 +826,17 @@ function getOrCreateSheet(ss, name, headers) {
 function createResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
+
+/**
+ * [신규 2026-04-20] 외부 URL 권한(script.external_request) 동의를 트리거하기 위한 1회용 함수.
+ * Apps Script 에디터 상단 드롭다운에서 이 함수(authorizeExternalFetch)를 선택하고 "실행"을 누르세요.
+ * OAuth 동의 팝업이 뜨면 "허용" → 이후 UrlFetchApp.fetch가 deployment에서 동작합니다.
+ * 한 번만 실행하면 되고, 이후 배포 업데이트 시에도 권한은 유지됩니다.
+ */
+function authorizeExternalFetch() {
+  var testUrl = "http://openapi.seoul.go.kr:8088/48464f6b62616c663130336f6d695477/json/GetParkInfo/1/1/";
+  var res = UrlFetchApp.fetch(testUrl, { muteHttpExceptions: true });
+  Logger.log("statusCode: " + res.getResponseCode());
+  Logger.log("body preview: " + res.getContentText().substring(0, 300));
+  return res.getResponseCode();
+}
