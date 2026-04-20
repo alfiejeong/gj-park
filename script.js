@@ -30,7 +30,7 @@ var userLocWatchId = null;     // [신규 2026-04-20] watchPosition 핸들 ID
 var boardSearchTerm = '';      // [신규 2026-04-20] 수다방 검색어 (제목·본문·작성자 필터)
 var boardSearchDebounceId = null;
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwFMMCeafSUHjjo1Y0bMdlrXJJLNpWRBq3M88XwZ5zLYwp8aLua8VBk7LrcmFbLdL1E/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzJicOTR-T4vtlI5NpffImefSK9kz1oqw06RlEfaDKOYehspIFq-S4z4sfbm6Huf7l6/exec";
 
 // [신규 2026-04-20] 주차장 기본 이미지 (인라인 SVG 데이터 URI) — 업로드된 이미지가 없거나 로드 실패 시 대체용
 const DEFAULT_PARKING_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
@@ -456,6 +456,14 @@ function renderNearbyWidget() {
     const list = document.getElementById('nearby-list');
     if (!widget || !list) return;
 
+    // [신규 2026-04-20] 모바일(≤767px)에서는 접힘 상태가 기본 (첫 렌더 시 1회만 세팅)
+    if (!widget.dataset.mobileInit) {
+        widget.dataset.mobileInit = '1';
+        if (window.matchMedia && window.matchMedia('(max-width: 767px)').matches) {
+            widget.classList.add('collapsed');
+        }
+    }
+
     if (!currentUserPos) {
         list.innerHTML = `<div class="widget-empty">위치 권한이 필요해요</div>`;
         widget.classList.remove('hidden');
@@ -622,25 +630,16 @@ function buildMarkerContent(item) {
             </div>
         </div>`;
     }
-    // [수정 2026-04-20] 서울시 공공데이터 vs 사용자 제보 시각 구분
+    // [수정 v2 2026-04-20] SVG 핀 제거 — 유형 라벨(pill)만 남겨 지도 복잡도 완화
     // - 사용자 제보: 노란 테두리 (#FFD400)  → 기존
     // - 서울시 공공: 파란 테두리 (#1877ec) + 라벨에 "공공" 태그
     const isSeoul = String(item.user || '').trim() === '서울시';
-    const strokeColor   = isSeoul ? '#1877ec' : '#FFD400';
-    const circleColor   = isSeoul ? '#1877ec' : '#FFD400';
-    const pTextColor    = isSeoul ? '#ffffff' : '#1c2633';
-    const labelClass    = isSeoul ? 'gj-pin-label gj-pin-label-city' : 'gj-pin-label';
+    const labelClass = isSeoul ? 'gj-pin-label gj-pin-label-city' : 'gj-pin-label';
 
     const typeText = String(item.type || '무료').replace(/</g, '&lt;');
     const labelText = isSeoul ? `공공 · ${typeText}` : typeText;
 
     return `<div class="gj-pin-marker gj-marker-drop">
-        <svg class="gj-pin-svg" viewBox="0 0 32 42" width="32" height="42" aria-hidden="true">
-            <path d="M16 2 C7.2 2 2 8 2 17 C2 28 16 40 16 40 C16 40 30 28 30 17 C30 8 24.8 2 16 2 Z"
-                  fill="#1c2633" stroke="${strokeColor}" stroke-width="3" stroke-linejoin="round"/>
-            <circle cx="16" cy="16" r="7" fill="${circleColor}"/>
-            <text x="16" y="20" text-anchor="middle" font-size="11" font-weight="900" fill="${pTextColor}" font-family="sans-serif">P</text>
-        </svg>
         <div class="${labelClass}">${labelText}</div>
     </div>`;
 }
@@ -649,10 +648,12 @@ function renderAllMarkers() {
     if (!map) return;
     preloadedData.forEach(item => {
         if (!item.isRendered) {
-            // 앵커: 단속 마커는 중앙 하단(31, 62), 일반 핀은 점 끝(16, 42)
+            // [수정 v2 2026-04-20] SVG 핀 제거됨 — 라벨(pill) 중앙 하단이 좌표 정조준
+            //   라벨 min-width 60px · height ~18px → 앵커 (30, 18)
+            //   단속 마커는 기존 크기 유지 (31, 62)
             const anchor = item.crackdownActive
                 ? new naver.maps.Point(31, 62)
-                : new naver.maps.Point(16, 42);
+                : new naver.maps.Point(30, 18);
             const marker = new naver.maps.Marker({
                 position: new naver.maps.LatLng(item.lat, item.lng),
                 map: map,
@@ -1649,4 +1650,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};
