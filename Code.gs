@@ -552,17 +552,36 @@ function handleFetch(p, mainSheet, commentSheet, crackdownSheet) {
         }
 
         var rows = parsed.GetParkInfo.row;
+
+        // [신규 2026-04-20] 서울 응답에도 후기/평점 병합: commentSheet에서 PKLT_NM 매칭 후기 붙이고 평균 별점 재계산
+        var seoulCmtRows = commentSheet.getDataRange().getValues();
+        var seoulCmtByName = {};
+        for (var sci = 1; sci < seoulCmtRows.length; sci++) {
+          var scKey = String(seoulCmtRows[sci][0] || '').trim();
+          if (!scKey) continue;
+          if (!seoulCmtByName[scKey]) seoulCmtByName[scKey] = [];
+          seoulCmtByName[scKey].push({
+            user: seoulCmtRows[sci][1],
+            comment: seoulCmtRows[sci][2],
+            rating: seoulCmtRows[sci][3]
+          });
+        }
+
         return createResponse(rows.filter(function(r) {
           return (r.PAY_YN === "N" || r.CHGD_FREE_NM === "무료") && r.LAT;
         }).map(function(r) {
           var nm = String(r.PKLT_NM || '').trim();
           var cdInfo = activeCrackdowns[nm];
+          var matched = seoulCmtByName[nm] || [];
+          var totalRate = 0;
+          for (var mi = 0; mi < matched.length; mi++) totalRate += parseFloat(matched[mi].rating || 0);
+          var avg = matched.length > 0 ? (totalRate / matched.length).toFixed(1) : "0.0";
           return {
             name: r.PKLT_NM, address: r.ADDR,
             lat: parseFloat(r.LAT), lng: parseFloat(r.LOT),
             type: "무료", user: "서울시", desc: "공공데이터",
             imageUrl: "", // [추가 2026-04-20] 공공데이터엔 이미지 없음 (프론트에서 기본 P 이미지로 대체)
-            avgRating: "5.0", comments: [],
+            avgRating: avg, comments: matched,
             crackdownActive: !!cdInfo,
             crackdownAt: cdInfo ? new Date(cdInfo.at).toISOString() : null,
             crackdownBy: cdInfo ? cdInfo.user : null
