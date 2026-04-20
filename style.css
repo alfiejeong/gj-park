@@ -207,22 +207,52 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 }
 
 /* =================================================== */
-/* [수정 2026-04-20] 내 위치 마커 — 파란 원/펄스 링 제거      */
-/*   - 작은 🚗 이모지만 표시 → 주차 마커 가림 최소화          */
+/* [수정 v2 2026-04-20] 내 위치 마커 — 원형 배지 없이 시인성 up  */
+/*   - 크기 ↑ + 노란 소프트 halo (주차 마커 안 가림)            */
+/*   - 주행감 애니메이션: 위아래 바운스 + 살짝 좌우 틸트        */
 /* =================================================== */
 .gj-userloc-marker {
-    width: 22px;
-    height: 22px;
+    position: relative;
+    width: 40px;
+    height: 40px;
     pointer-events: none;
     display: flex;
     align-items: center;
     justify-content: center;
 }
+/* 브랜드 컬러(노랑) 소프트 halo — 원이 아니라 방사형 그라디언트로 부드럽게 번짐
+   → 경계선이 없어 주차 정보와 겹쳐도 '덩어리'로 가리지 않음 */
+.gj-userloc-halo {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 212, 0, 0.65) 0%, rgba(255, 212, 0, 0.25) 45%, rgba(255, 212, 0, 0) 72%);
+    animation: gjUserLocGlow 1.8s ease-in-out infinite;
+    z-index: 1;
+}
 .gj-userloc-car {
-    font-size: 18px;
+    position: relative;
+    font-size: 28px;
     line-height: 1;
-    /* 흰 외곽선으로 지도 위에서 자동차 윤곽을 살짝 강조 */
-    filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
+    z-index: 2;
+    /* 검정 외곽선(드롭섀도우 2중 적용) — 어떤 지도 배경에서도 자동차 윤곽이 또렷 */
+    filter:
+        drop-shadow(0 0 1px #000)
+        drop-shadow(0 0 1px #000)
+        drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+    /* 주행감: 상하 바운스 + 미세 좌우 틸트 */
+    animation: gjUserLocDrive 1.2s ease-in-out infinite;
+    transform-origin: center bottom;
+}
+@keyframes gjUserLocDrive {
+    0%, 100% { transform: translateY(0)    rotate(-1.5deg); }
+    25%      { transform: translateY(-2px) rotate(0deg); }
+    50%      { transform: translateY(-3px) rotate(1.5deg); }
+    75%      { transform: translateY(-2px) rotate(0deg); }
+}
+@keyframes gjUserLocGlow {
+    0%, 100% { opacity: 0.55; transform: scale(0.92); }
+    50%      { opacity: 1;    transform: scale(1.05); }
 }
 
 /* =================================================== */

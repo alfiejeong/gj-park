@@ -1489,9 +1489,12 @@ function buildPickMarkerContent() {
 // - 파란 팔레트(빨간 Pick·노란 주차 마커와 충돌 안 함)
 // - 자동차 이모티콘이 들어간 둥근 배지 + 확산 accuracy 링
 // - watchPosition으로 라이브 업데이트
-// [수정 2026-04-20] 내 위치 마커 — 파란 원·펄스링 모두 제거, 작은 🚗 아이콘만 노출 (주차 마커 가림 방지)
+// [수정 v2 2026-04-20] 내 위치 마커 시인성 튜닝 — 원형 배지 없이, 큰 🚗 + 노란 소프트 halo + 주행감 애니메이션
+// - 파란 원/accuracy 링은 여전히 제거 (주차 마커 가림 문제 해결 유지)
+// - 크기 up + halo + 상하 바운스 + 살짝 좌우 틸트 → 움직임으로 시선 집중
 function buildUserLocMarkerContent() {
     return `<div class="gj-userloc-marker">
+        <div class="gj-userloc-halo"></div>
         <span class="gj-userloc-car">🚗</span>
     </div>`;
 }
@@ -1505,8 +1508,8 @@ function updateUserLocMarker(lat, lng) {
             map: map,
             icon: {
                 content: buildUserLocMarkerContent(),
-                // 작은 🚗 정중앙이 실제 좌표와 일치 (22x22 중심)
-                anchor: new naver.maps.Point(11, 11)
+                // 🚗 정중앙이 실제 좌표와 일치 (40x40 컨테이너 중심)
+                anchor: new naver.maps.Point(20, 20)
             },
             zIndex: 250,
             clickable: false
@@ -1635,4 +1638,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};
