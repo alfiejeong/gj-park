@@ -97,6 +97,12 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
     position: relative;
     z-index: 2;
 }
+/* [신규 2026-04-20] 서울시 공공데이터 라벨 변형 — 파란 테두리 + 연한 파란 배경 */
+.gj-pin-label-city {
+    border-color: #1877ec;
+    background: #eef5ff;
+    color: #0c4ea8;
+}
 
 /* 단속 마커 — 고슴도치 스파이키 배경 + 🚨 단속 */
 .gj-crackdown-marker {

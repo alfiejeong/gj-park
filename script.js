@@ -622,16 +622,26 @@ function buildMarkerContent(item) {
             </div>
         </div>`;
     }
-    // 일반 마커: 역물방울 SVG + 유형 라벨 (pill)
+    // [수정 2026-04-20] 서울시 공공데이터 vs 사용자 제보 시각 구분
+    // - 사용자 제보: 노란 테두리 (#FFD400)  → 기존
+    // - 서울시 공공: 파란 테두리 (#1877ec) + 라벨에 "공공" 태그
+    const isSeoul = String(item.user || '').trim() === '서울시';
+    const strokeColor   = isSeoul ? '#1877ec' : '#FFD400';
+    const circleColor   = isSeoul ? '#1877ec' : '#FFD400';
+    const pTextColor    = isSeoul ? '#ffffff' : '#1c2633';
+    const labelClass    = isSeoul ? 'gj-pin-label gj-pin-label-city' : 'gj-pin-label';
+
     const typeText = String(item.type || '무료').replace(/</g, '&lt;');
+    const labelText = isSeoul ? `공공 · ${typeText}` : typeText;
+
     return `<div class="gj-pin-marker gj-marker-drop">
         <svg class="gj-pin-svg" viewBox="0 0 32 42" width="32" height="42" aria-hidden="true">
             <path d="M16 2 C7.2 2 2 8 2 17 C2 28 16 40 16 40 C16 40 30 28 30 17 C30 8 24.8 2 16 2 Z"
-                  fill="#1c2633" stroke="#FFD400" stroke-width="3" stroke-linejoin="round"/>
-            <circle cx="16" cy="16" r="7" fill="#FFD400"/>
-            <text x="16" y="20" text-anchor="middle" font-size="11" font-weight="900" fill="#1c2633" font-family="sans-serif">P</text>
+                  fill="#1c2633" stroke="${strokeColor}" stroke-width="3" stroke-linejoin="round"/>
+            <circle cx="16" cy="16" r="7" fill="${circleColor}"/>
+            <text x="16" y="20" text-anchor="middle" font-size="11" font-weight="900" fill="${pTextColor}" font-family="sans-serif">P</text>
         </svg>
-        <div class="gj-pin-label">${typeText}</div>
+        <div class="${labelClass}">${labelText}</div>
     </div>`;
 }
 
@@ -1639,4 +1649,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};
