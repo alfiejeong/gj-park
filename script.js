@@ -25,10 +25,12 @@ var currentBoardPage = 1;      // [추가] 수다방 현재 페이지
 const POSTS_PER_PAGE = 10;     // [추가] 페이지당 게시글 수
 var userScores = {};           // [추가 - 단계 4-1] 닉네임 → 점수 맵 (뱃지 표시용)
 var currentUserPos = null;     // [신규 2026-04-20] 현재 위치 (가까운 주차 위젯용)
+var userLocMarker = null;      // [신규 2026-04-20] 내 위치 자동차 마커 (지도에 라이브 표시)
+var userLocWatchId = null;     // [신규 2026-04-20] watchPosition 핸들 ID
 var boardSearchTerm = '';      // [신규 2026-04-20] 수다방 검색어 (제목·본문·작성자 필터)
 var boardSearchDebounceId = null;
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzAjMP2w-uIk9gI7_I_NLbIlz0XzzoMqr63ij42Klx0hOtnV4mUCoR7AVkafk6tmo_Z/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwXqN9j6dcpU9vnukBa22pPqIdzNGXD7Adll5fyWPYfh5wbWzFJWSK-i35AlCpQj2c/exec";
 
 // [신규 2026-04-20] 주차장 기본 이미지 (인라인 SVG 데이터 URI) — 업로드된 이미지가 없거나 로드 실패 시 대체용
 const DEFAULT_PARKING_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
@@ -423,6 +425,9 @@ function initMap() {
         currentUserPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setupMap(pos.coords.latitude, pos.coords.longitude);
         renderNearbyWidget();
+        // [신규 2026-04-20] 내 위치 자동차 마커 + 라이브 추적 시작
+        updateUserLocMarker(pos.coords.latitude, pos.coords.longitude);
+        startUserLocWatch();
     }, () => { setupMap(37.5665, 126.9780); }, { timeout: 3000 });
 }
 
@@ -1419,28 +1424,84 @@ async function deletePost(postId) {
 // [신규 2026-04-20] 사용자가 지도에 위치를 찍을 때 표시되는 Pick 마커 (임시 선택 위치)
 // - 일반 주차장 마커(노란 역물방울)와 확실히 차별화 → 빨간/핑크 타겟 모양 + "여기!" 라벨
 // - 위아래 바운싱(bob) 애니메이션 + 초기 드롭인 결합
+// [수정 2026-04-20] Pick 마커: '여기!' 라벨 제거 + 아래로 뾰족해지는 화살표 모양으로 교체
+// - 위쪽은 넓고, 아래로 갈수록 홀쭉해져 끝점이 클릭한 지점을 정확히 가리킴
+// - 빨간색 컬러 팔레트 유지 + 드롭 애니메이션 + 위아래 바운스 + 확산 펄스
 function buildPickMarkerContent() {
     return `<div class="gj-pick-marker gj-pick-drop">
         <div class="gj-pick-pulse"></div>
-        <svg class="gj-pick-svg" viewBox="0 0 40 52" width="40" height="52" aria-hidden="true">
-            <!-- 그림자 -->
-            <ellipse cx="20" cy="49" rx="9" ry="2.2" fill="rgba(0,0,0,0.28)"/>
-            <!-- 막대(핀 스탠드) -->
-            <line x1="20" y1="30" x2="20" y2="47" stroke="#1c2633" stroke-width="2.5" stroke-linecap="round"/>
-            <!-- 외곽 원(빨간 링) -->
-            <circle cx="20" cy="18" r="14" fill="#FF3B30" stroke="#1c2633" stroke-width="2.5"/>
-            <!-- 타겟 링 -->
-            <circle cx="20" cy="18" r="9" fill="none" stroke="#FFF" stroke-width="2"/>
-            <!-- 중앙 도트 -->
-            <circle cx="20" cy="18" r="3.5" fill="#FFF"/>
-            <!-- 크로스헤어 -->
-            <line x1="20" y1="3" x2="20" y2="8" stroke="#FFF" stroke-width="2" stroke-linecap="round"/>
-            <line x1="20" y1="28" x2="20" y2="33" stroke="#FFF" stroke-width="2" stroke-linecap="round"/>
-            <line x1="5" y1="18" x2="10" y2="18" stroke="#FFF" stroke-width="2" stroke-linecap="round"/>
-            <line x1="30" y1="18" x2="35" y2="18" stroke="#FFF" stroke-width="2" stroke-linecap="round"/>
+        <svg class="gj-pick-svg" viewBox="0 0 40 56" width="40" height="56" aria-hidden="true">
+            <!-- 바닥 그림자 -->
+            <ellipse cx="20" cy="53" rx="6" ry="1.8" fill="rgba(0,0,0,0.3)"/>
+            <!-- 아래로 뾰족해지는 화살표(넓은 머리 → 가늘어지는 몸통 → 끝점)
+                 위쪽: 넓은 상단 (곡선으로 부드럽게)
+                 아래쪽: 뾰족한 삼각 끝 — 정확히 (20, 52)에 위치 -->
+            <path d="M 20 2
+                     C 28 2, 35 6, 35 14
+                     C 35 20, 31 24, 27 28
+                     L 22 48
+                     L 20 52
+                     L 18 48
+                     L 13 28
+                     C 9 24, 5 20, 5 14
+                     C 5 6, 12 2, 20 2 Z"
+                  fill="#FF3B30"
+                  stroke="#1c2633"
+                  stroke-width="2.5"
+                  stroke-linejoin="round"/>
+            <!-- 내부 하이라이트 (위쪽 넓은 부분에 흰 동그라미) -->
+            <circle cx="20" cy="14" r="5" fill="#FFF"/>
+            <!-- 내부 아래 방향 표시(▾) -->
+            <path d="M 16 12 L 20 17 L 24 12 Z" fill="#FF3B30"/>
         </svg>
-        <div class="gj-pick-label">여기!</div>
     </div>`;
+}
+
+// [신규 2026-04-20] 내 위치 자동차 마커 — 주차 정보 근처로 이동 중임을 시각화
+// - 파란 팔레트(빨간 Pick·노란 주차 마커와 충돌 안 함)
+// - 자동차 이모티콘이 들어간 둥근 배지 + 확산 accuracy 링
+// - watchPosition으로 라이브 업데이트
+function buildUserLocMarkerContent() {
+    return `<div class="gj-userloc-marker">
+        <div class="gj-userloc-accuracy"></div>
+        <div class="gj-userloc-badge">
+            <span class="gj-userloc-car">🚗</span>
+        </div>
+    </div>`;
+}
+
+function updateUserLocMarker(lat, lng) {
+    if (!map || typeof naver === 'undefined') return;
+    const pos = new naver.maps.LatLng(lat, lng);
+    if (!userLocMarker) {
+        userLocMarker = new naver.maps.Marker({
+            position: pos,
+            map: map,
+            icon: {
+                content: buildUserLocMarkerContent(),
+                // 배지 정중앙이 실제 좌표와 일치하도록 앵커 설정 (SVG 크기 60x60 중심)
+                anchor: new naver.maps.Point(30, 30)
+            },
+            zIndex: 250,
+            clickable: false
+        });
+    } else {
+        userLocMarker.setPosition(pos);
+    }
+}
+
+// [신규 2026-04-20] 위치 라이브 추적 시작 (한 번만 실행)
+function startUserLocWatch() {
+    if (userLocWatchId !== null) return;
+    if (!navigator.geolocation || !navigator.geolocation.watchPosition) return;
+    userLocWatchId = navigator.geolocation.watchPosition(
+        (p) => {
+            currentUserPos = { lat: p.coords.latitude, lng: p.coords.longitude };
+            updateUserLocMarker(p.coords.latitude, p.coords.longitude);
+        },
+        () => { /* 권한 거부·오류 — 조용히 무시 */ },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
 }
 
 function setupEvents() {
@@ -1452,7 +1513,7 @@ function setupEvents() {
             map: map,
             icon: {
                 content: buildPickMarkerContent(),
-                // 마커 끝(핀 스탠드 바닥)이 클릭 지점에 정확히 닿도록 앵커 설정
+                // 화살표 뾰족한 끝점이 클릭 지점에 정확히 닿도록 앵커 설정 (SVG 내 (20, 52))
                 anchor: new naver.maps.Point(20, 52)
             },
             zIndex: 300
@@ -1465,10 +1526,12 @@ function setupEvents() {
 
 function moveToMyLoc() {
     navigator.geolocation.getCurrentPosition((pos) => {
-        // [수정 2026-04-20] 현재 위치 업데이트 + 가까운 주차 위젯 재계산
+        // [수정 2026-04-20] 현재 위치 업데이트 + 가까운 주차 위젯 재계산 + 내 위치 마커 갱신
         currentUserPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         if (map) map.panTo(new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
         renderNearbyWidget();
+        updateUserLocMarker(pos.coords.latitude, pos.coords.longitude);
+        startUserLocWatch();
     });
 }
 
@@ -1546,4 +1609,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};

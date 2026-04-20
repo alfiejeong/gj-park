@@ -185,33 +185,18 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
     z-index: 2;
 }
 
-/* "여기!" 라벨 — 핀 아래 쪽에 작게 */
-.gj-pick-label {
-    margin-top: -4px;
-    background: #FF3B30;
-    color: #fff;
-    border: 2px solid #1c2633;
-    padding: 2px 10px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 900;
-    white-space: nowrap;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-    letter-spacing: -0.3px;
-    position: relative;
-    z-index: 3;
-}
+/* [수정 2026-04-20] "여기!" 라벨은 제거 — 화살표 모양만으로 위치 명확히 표시 */
 
-/* 확산 펄스 링 — 마커 뒤쪽에서 계속 퍼져나감 */
+/* 확산 펄스 링 — 화살표 상단(동그란 머리) 주변에서 계속 퍼져나감 */
 .gj-pick-pulse {
     position: absolute;
-    top: 4px;
+    top: 2px;
     left: 50%;
-    width: 30px;
-    height: 30px;
-    margin-left: -15px;
+    width: 32px;
+    height: 32px;
+    margin-left: -16px;
     border-radius: 50%;
-    background: rgba(255, 59, 48, 0.5);
+    background: rgba(255, 59, 48, 0.45);
     animation: gjPickPulse 1.6s ease-out infinite;
     z-index: 1;
     pointer-events: none;
@@ -219,6 +204,57 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 @keyframes gjPickPulse {
     0%   { transform: scale(0.6); opacity: 0.7; }
     100% { transform: scale(2.4); opacity: 0; }
+}
+
+/* =================================================== */
+/* [신규 2026-04-20] 내 위치 자동차 마커 — 라이브 추적      */
+/*   - 파란 팔레트(주차·Pick과 충돌 없음)                    */
+/*   - 🚗 이모지 배지 + 확산 accuracy 링                    */
+/* =================================================== */
+.gj-userloc-marker {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.gj-userloc-badge {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #5fb4ff 0%, #1877ec 70%, #0c4ea8 100%);
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(24, 119, 236, 0.55), 0 0 0 2px rgba(24, 119, 236, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+.gj-userloc-car {
+    font-size: 18px;
+    line-height: 1;
+    transform: translateY(-1px);
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+.gj-userloc-accuracy {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    margin-left: -22px;
+    margin-top: -22px;
+    border-radius: 50%;
+    background: rgba(24, 119, 236, 0.35);
+    animation: gjUserLocPulse 2s ease-out infinite;
+    z-index: 1;
+}
+@keyframes gjUserLocPulse {
+    0%   { transform: scale(0.55); opacity: 0.8; }
+    100% { transform: scale(2.2);  opacity: 0; }
 }
 
 /* [수정] saving-modal: hidden 클래스가 display:none !important를 적용하므로
