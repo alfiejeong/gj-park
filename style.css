@@ -276,7 +276,13 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
     pointer-events: none;
     letter-spacing: -0.2px;
 }
-.visitor-counter-ico { font-size: 12px; }
+/* [수정 2026-04-20] SVG 발자국 아이콘 — 노란색 고정, 어두운 배경에서도 선명 */
+.visitor-counter-ico {
+    display: block;
+    flex-shrink: 0;
+    /* 살짝 드롭섀도우로 입체감 + 대비 추가 */
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
+}
 .visitor-counter-label { color: #fff; opacity: 0.85; }
 .visitor-counter-num { color: #FFD400; font-weight: 900; }
 
