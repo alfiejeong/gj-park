@@ -453,7 +453,9 @@ function formatDistance(km) {
     return Math.round(km) + 'km';
 }
 
-// [신규 2026-04-20] 좌측 위젯: 현재 위치 기준 가까운 주차 5곳
+// [수정 2026-04-20] 좌측 위젯: 현재 "지도 중심" 기준 가까운 주차 5곳
+//   기존엔 GPS(currentUserPos)를 기준 삼아, 지도를 다른 지역으로 이동해도 주변이 바뀌지 않는 문제가 있었음.
+//   이제는 map.getCenter()를 사용해 사용자가 보고 있는 화면 중심을 기준으로 동적 재계산.
 function renderNearbyWidget() {
     const widget = document.getElementById('nearby-widget');
     const list = document.getElementById('nearby-list');
@@ -467,8 +469,19 @@ function renderNearbyWidget() {
         }
     }
 
-    if (!currentUserPos) {
-        list.innerHTML = `<div class="widget-empty">위치 권한이 필요해요</div>`;
+    // [신규 2026-04-20] 기준점: 지도 중심 우선, 지도가 아직 준비 전이면 내 위치 폴백
+    let refLat = null, refLng = null;
+    if (map && map.getCenter) {
+        const c = map.getCenter();
+        refLat = c.y !== undefined ? c.y : c.lat();
+        refLng = c.x !== undefined ? c.x : c.lng();
+    } else if (currentUserPos) {
+        refLat = currentUserPos.lat;
+        refLng = currentUserPos.lng;
+    }
+
+    if (refLat === null || refLng === null) {
+        list.innerHTML = `<div class="widget-empty">지도 준비 중...</div>`;
         widget.classList.remove('hidden');
         return;
     }
@@ -481,7 +494,7 @@ function renderNearbyWidget() {
     const withDistance = preloadedData
         .map(it => ({
             it: it,
-            d: haversineDistance(currentUserPos.lat, currentUserPos.lng, it.lat, it.lng)
+            d: haversineDistance(refLat, refLng, it.lat, it.lng)
         }))
         .filter(x => !isNaN(x.d))
         .sort((a, b) => a.d - b.d)
@@ -580,6 +593,8 @@ function setupMap(lat, lng) {
     // [신규 2026-04-20] 줌 변경 시 마커 클러스터 재계산
     naver.maps.Event.addListener(map, 'zoom_changed', scheduleClusterUpdate);
     naver.maps.Event.addListener(map, 'idle', scheduleClusterUpdate);
+    // [신규 2026-04-20] 지도 이동·줌 변경 시 '가까운 주차'도 재계산 (기준점이 화면 중심이므로)
+    naver.maps.Event.addListener(map, 'idle', renderNearbyWidget);
     setupEvents();
 }
 

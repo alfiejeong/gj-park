@@ -583,7 +583,10 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
         padding: 8px 12px;
         font-size: 12px;
         font-weight: 800;
-        background: rgba(255, 212, 0, 0.95);          /* 거의 불투명한 노란 헤더로 상단 강조 */
+        /* [수정 2026-04-20] 타이틀도 반투명 처리 — 지도 위에서 UI 위화감 최소화 */
+        background: rgba(255, 212, 0, 0.55);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
         color: #1c2633;
         border-radius: 12px 12px 0 0;
     }
@@ -595,9 +598,10 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
     .widget-item-meta { font-size: 9px; }
 
     /* [신규 2026-04-20] 모바일 하단 와이드 광고 배너 — 기존 사이드 광고 대체
-       floating-menu 위에 쌓임 → floating-menu는 배너 위쪽으로 띄움 */
+       floating-menu 위에 쌓임 → floating-menu는 배너 위쪽으로 띄움
+       [수정 2026-04-20] display: block !important + display: flex 중복 → flex !important로 정리 (가로 정렬 복구) */
     #mobile-ad-banner {
-        display: block !important;
+        display: flex !important;
         position: fixed;
         left: 0;
         right: 0;
@@ -610,7 +614,6 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
         box-sizing: border-box;
         box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.28);
         z-index: 900;
-        display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
@@ -640,14 +643,13 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
         padding: 3px 8px;
         border-radius: 6px;
     }
-    /* 하단 배너 + visitor-counter + floating-menu 겹침 방지 */
+    /* 하단 배너 + floating-menu 겹침 방지 */
     #floating-menu {
         bottom: 100px;           /* 하단 배너(약 70px) + 여유 */
     }
+    /* [수정 2026-04-20] 모바일에서는 방문자 수 위젯 완전 숨김 — 화면 공간 확보 */
     .visitor-counter {
-        bottom: 80px !important; /* 배너 위로 띄움 */
-        right: 12px;
-        opacity: 0.85;
+        display: none !important;
     }
 }
 
