@@ -2,7 +2,9 @@
  * [거지주차.com] 백엔드 통합 엔진 (V.2026.04 댓글무결성판)
  *
  * 수정 사항:
- * 1. 서울시 API URL을 HTTPS로 변경 (HTTP → HTTPS)
+ * 1. 서울시 API URL: HTTPS → HTTP 환원 (2026-04-20).
+ *    사유: openapi.seoul.go.kr:8088의 TLS 구버전으로 ERR_SSL_PROTOCOL_ERROR 발생.
+ *    GAS는 서버사이드 호출이라 mixed-content 이슈와 무관하므로 HTTP 사용 안전.
  * 2. 서울시 API 응답 구조 안전 체크 추가 (GetParkInfo 없을 때 빈 배열 반환)
  * 3. add_comment: 아이디당 한 주차장에 후기 1개로 제한 (기존 있으면 갱신)
  * 4. delete_comment: 본인 후기 삭제 API 신설
@@ -511,7 +513,10 @@ function handleFetch(p, mainSheet, commentSheet, crackdownSheet) {
     // [수정] 서울시 API: HTTP → HTTPS, 응답 구조 안전 체크 추가
     if (p.type === "seoul") {
       // [갱신 2026-04-20] 서울 열린데이터광장 인증키 재발급 (이전 키 인증 실패)
-      var url = "https://openapi.seoul.go.kr:8088/48464f6b62616c663130336f6d695477/json/GetParkInfo/1/1000/";
+      // [재수정 2026-04-20] HTTPS(8088)는 TLS 구버전 때문에 최신 Chrome/UrlFetchApp에서
+      //   ERR_SSL_PROTOCOL_ERROR 발생 → HTTP로 환원. GAS는 서버사이드 호출이라
+      //   브라우저의 mixed-content 블록과 무관하며, 사이트 자체의 HTTPS 유지엔 영향 없음.
+      var url = "http://openapi.seoul.go.kr:8088/48464f6b62616c663130336f6d695477/json/GetParkInfo/1/1000/";
       try {
         var res = UrlFetchApp.fetch(url);
         var parsed = JSON.parse(res.getContentText());
