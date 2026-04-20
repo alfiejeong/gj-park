@@ -30,7 +30,7 @@ var userLocWatchId = null;     // [신규 2026-04-20] watchPosition 핸들 ID
 var boardSearchTerm = '';      // [신규 2026-04-20] 수다방 검색어 (제목·본문·작성자 필터)
 var boardSearchDebounceId = null;
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxYHHP7MVtMmSl8MclBj4fP_kZeF7HfEQbfoImGjbSI77tA27DcwpFJTEhinb-ndWPi/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwI9NgMrVtwemkJv_PasrjtBX_S19zPQr-s7Qb6lIrO35FjzqyHpru8kh_gY45U1u1b/exec";
 
 // [신규 2026-04-20] 주차장 기본 이미지 (인라인 SVG 데이터 URI) — 업로드된 이미지가 없거나 로드 실패 시 대체용
 const DEFAULT_PARKING_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
@@ -1639,4 +1639,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};
