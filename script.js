@@ -456,6 +456,18 @@ function formatDistance(km) {
 // [수정 2026-04-20] 좌측 위젯: 현재 "지도 중심" 기준 가까운 주차 5곳
 //   기존엔 GPS(currentUserPos)를 기준 삼아, 지도를 다른 지역으로 이동해도 주변이 바뀌지 않는 문제가 있었음.
 //   이제는 map.getCenter()를 사용해 사용자가 보고 있는 화면 중심을 기준으로 동적 재계산.
+// [신규 2026-04-20] ⚡ 모바일 성능 최적화 — renderNearbyWidget 디바운스 래퍼
+//   idle 이벤트가 드래그/줌 도중 다수 발사되는 케이스에 대비.
+//   120ms window 내에 여러 번 요청되면 마지막 1회만 실제 렌더 실행.
+let _nearbyRenderTimer = null;
+function scheduleNearbyRender() {
+    if (_nearbyRenderTimer) clearTimeout(_nearbyRenderTimer);
+    _nearbyRenderTimer = setTimeout(() => {
+        _nearbyRenderTimer = null;
+        renderNearbyWidget();
+    }, 120);
+}
+
 function renderNearbyWidget() {
     const widget = document.getElementById('nearby-widget');
     const list = document.getElementById('nearby-list');
@@ -467,6 +479,14 @@ function renderNearbyWidget() {
         if (window.matchMedia && window.matchMedia('(max-width: 767px)').matches) {
             widget.classList.add('collapsed');
         }
+    }
+
+    // [신규 2026-04-20] ⚡ 성능 최적화 — 위젯이 접혀있으면(사용자 화면에 안 보이면)
+    //   거리계산/DOM 재생성 전부 건너뛴다. 펼치는 순간 toggleWidget()이 강제 재렌더 호출.
+    //   모바일은 평상시 접힘이 기본이라 이 가드가 가장 큰 이득.
+    if (widget.classList.contains('collapsed')) {
+        widget.classList.remove('hidden');
+        return;
     }
 
     // [수정 2026-04-20] 기준점: 지도 중심 우선. Naver LatLng는 .lat()/.lng() 메서드가 표준.
@@ -605,16 +625,17 @@ function setupMap(lat, lng) {
         isMapTilesLoaded = true; // [추가] 타일 로드 완료 플래그 설정
         hideSplashScreen();
     });
-    // [신규 2026-04-20] 줌 변경 시 마커 클러스터 재계산
-    naver.maps.Event.addListener(map, 'zoom_changed', scheduleClusterUpdate);
+    // [신규 2026-04-20] 줌 변경 시 마커 클러스터 재계산 (rAF 디바운스 사용)
+    //   [수정 2026-04-20] zoom_changed는 줌 애니메이션 중 매 프레임 발사 → idle 하나만 걸면 충분
     naver.maps.Event.addListener(map, 'idle', scheduleClusterUpdate);
     // [신규 2026-04-20] 지도 이동·줌 변경 시 '가까운 주차'도 재계산 (기준점이 화면 중심이므로)
-    //   [수정 2026-04-20] 모바일 터치 드래그 종료 시 idle이 간헐 누락되는 케이스 대비
-    //   → dragend + zoom_changed + idle + center_changed 모두 훅
-    naver.maps.Event.addListener(map, 'idle', renderNearbyWidget);
-    naver.maps.Event.addListener(map, 'dragend', renderNearbyWidget);
-    naver.maps.Event.addListener(map, 'zoom_changed', renderNearbyWidget);
-    naver.maps.Event.addListener(map, 'center_changed', renderNearbyWidget);
+    //   [수정 2026-04-20] ⚡ 모바일 성능 이슈 해결:
+    //   기존에는 idle + dragend + zoom_changed + center_changed 4개 이벤트에 전부 훅 걸어서
+    //   드래그/줌 중 매 프레임 수십 번 renderNearbyWidget() 호출되어 모바일 체감 속도 급감.
+    //   naver 지도의 'idle'은 "카메라 움직임이 멈춘 뒤 한 번" 발사되므로 이거 하나면 충분.
+    //   추가로 scheduleNearbyRender()로 debounce 해서 카메라가 연속으로 정지/재시작할 때도
+    //   실제 렌더는 120ms 안에 한 번만 일어나도록 보장.
+    naver.maps.Event.addListener(map, 'idle', scheduleNearbyRender);
     setupEvents();
 }
 
@@ -1794,4 +1815,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};
