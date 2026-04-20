@@ -724,6 +724,7 @@ function renderAllMarkers() {
             });
             attachInfoWindow(item.marker, item);
             item.isRendered = true;
+            _clusterDirty = true; // [추가 2026-04-20] 새 마커 생겼으니 클러스터 재계산 강제
         }
     });
     updateClustering();
@@ -757,14 +758,21 @@ function buildClusterBadgeContent(items) {
 }
 
 // [신규 2026-04-20] 줌 변경/idle 시 재그룹핑 — 개별 마커 on/off + 클러스터 배지 재생성
+//   [수정 2026-04-20] ⚡ 모바일 성능 최적화: 줌이 그대로면(=단순 팬) 클러스터 구성은 안 바뀌므로
+//   즉시 리턴. preloadedData가 새로 로드되면 _clusterDirty=true로 강제 재계산 유도.
+let _lastClusterZoom = null;
+let _clusterDirty = true;
 function updateClustering() {
     if (!map) return;
+
+    const zoom = map.getZoom();
+    if (!_clusterDirty && _lastClusterZoom === zoom) return;
+    _lastClusterZoom = zoom;
+    _clusterDirty = false;
 
     // 기존 클러스터 배지 제거
     clusterMarkers.forEach(m => m.setMap(null));
     clusterMarkers = [];
-
-    const zoom = map.getZoom();
     const groups = {};
     preloadedData.forEach(item => {
         if (typeof item.lat !== 'number' || typeof item.lng !== 'number') return;
