@@ -30,7 +30,7 @@ var userLocWatchId = null;     // [신규 2026-04-20] watchPosition 핸들 ID
 var boardSearchTerm = '';      // [신규 2026-04-20] 수다방 검색어 (제목·본문·작성자 필터)
 var boardSearchDebounceId = null;
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwI9NgMrVtwemkJv_PasrjtBX_S19zPQr-s7Qb6lIrO35FjzqyHpru8kh_gY45U1u1b/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuhr5gjgm3tnD7jhL3Bv4tZlN_O1k6tYgJ5Hfj33O5tWq5bBTiKLLlUsbWC-Y77mWA/exec";
 
 // [신규 2026-04-20] 주차장 기본 이미지 (인라인 SVG 데이터 URI) — 업로드된 이미지가 없거나 로드 실패 시 대체용
 const DEFAULT_PARKING_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(

@@ -510,7 +510,8 @@ function handleFetch(p, mainSheet, commentSheet, crackdownSheet) {
 
     // [수정] 서울시 API: HTTP → HTTPS, 응답 구조 안전 체크 추가
     if (p.type === "seoul") {
-      var url = "https://openapi.seoul.go.kr:8088/7353726f51616c663130305873426c73/json/GetParkInfo/1/1000/";
+      // [갱신 2026-04-20] 서울 열린데이터광장 인증키 재발급 (이전 키 인증 실패)
+      var url = "https://openapi.seoul.go.kr:8088/48464f6b62616c663130336f6d695477/json/GetParkInfo/1/1000/";
       try {
         var res = UrlFetchApp.fetch(url);
         var parsed = JSON.parse(res.getContentText());
