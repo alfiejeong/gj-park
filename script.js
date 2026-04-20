@@ -628,7 +628,8 @@ function initVisitorCounter() {
 // [리뉴얼 2026-04-20] 마커 콘텐츠 빌더 — 역물방울 핀 / 고슴도치 단속 마커
 function buildMarkerContent(item) {
     if (item.crackdownActive) {
-        return `<div class="gj-crackdown-marker gj-marker-drop" title="주차 주의 — 30분 내 신고됨">
+        // [수정 2026-04-20] gj-marker-drop 제거 — 클러스터 토글 시마다 애니메이션 재생되어 피로함
+        return `<div class="gj-crackdown-marker" title="주차 주의 — 30분 내 신고됨">
             <div class="gj-spiky-bg"></div>
             <div class="gj-spiky-text">
                 <span class="siren">⚠️</span>
@@ -645,7 +646,8 @@ function buildMarkerContent(item) {
     const typeText = String(item.type || '무료').replace(/</g, '&lt;');
     const labelText = isSeoul ? `공공 · ${typeText}` : typeText;
 
-    return `<div class="gj-pin-marker gj-marker-drop">
+    // [수정 2026-04-20] gj-marker-drop 제거 — 지도 줌/클러스터 재계산 때마다 애니메이션 반복되어 시인성 저해
+    return `<div class="gj-pin-marker">
         <div class="${labelClass}">${labelText}</div>
     </div>`;
 }
@@ -759,8 +761,18 @@ function scheduleClusterUpdate() {
     });
 }
 
+// [신규 2026-04-20] name → 안전한 DOM id 변환기
+//   기존: 공백만 제거 → 서울시 PKLT_NM에 섞인 () , . - 등 CSS에서 특수문자로 취급되는 글자가
+//   querySelectorAll('#star-wrap-광화문주차장(임시) .star-btn')처럼 파싱 실패를 일으켜
+//   setRatingUI가 무반응 → 별점 선택이 안 되는 버그 유발.
+//   여기서 영숫자·한글·언더스코어만 남기고 나머지는 _로 치환해서 어느 브라우저에서도 안전하도록 한다.
+function safeIdFromName(name) {
+    return String(name || "noname").replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ]/g, '_');
+}
+
 function attachInfoWindow(marker, item) {
-    const idSafe = (item.name || "noname").replace(/\s/g, '');
+    // [수정 2026-04-20] 공백만 제거하던 기존 로직 → 전체 특수문자까지 안전하게 치환
+    const idSafe = safeIdFromName(item.name);
     const savedNick = localStorage.getItem('gj-nick') || '';
     // [추가] onclick 인자에 안전하게 박기 위한 이스케이프
     const nameEsc = String(item.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -882,7 +894,10 @@ function attachInfoWindow(marker, item) {
 }
 
 function setRatingUI(id, score) {
-    const stars = document.querySelectorAll(`#star-wrap-${id} .star-btn`);
+    // [수정 2026-04-20] querySelectorAll은 CSS 파서를 거치므로 id에 특수문자(서울시 PKLT_NM의 () - , 등)가 있으면
+    //   selector 오류로 무반응 → getElementById + 자식 탐색으로 교체하여 어떤 이름이든 확실히 동작하게 함
+    const wrap = document.getElementById(`star-wrap-${id}`);
+    const stars = wrap ? wrap.querySelectorAll('.star-btn') : [];
     const input = document.getElementById(`rate-val-${id}`);
     if (input) input.value = score;
 
@@ -892,7 +907,8 @@ function setRatingUI(id, score) {
 }
 
 async function sendFeedback(targetName) {
-    const idSafe = targetName.replace(/\s/g, '');
+    // [수정 2026-04-20] attachInfoWindow와 동일한 안전 id 규칙 사용 (특수문자 포함 이름 지원)
+    const idSafe = safeIdFromName(targetName);
     // [수정] 닉네임 + 비번을 폼에서 직접 읽도록 변경 (아이디당 1개 규칙 + 무결성)
     const nick = document.getElementById(`cmt-nick-${idSafe}`).value.trim();
     const pw = document.getElementById(`cmt-pw-${idSafe}`).value;
