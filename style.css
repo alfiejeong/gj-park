@@ -365,6 +365,12 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 }
 .visitor-counter-label { color: #fff; opacity: 0.85; }
 .visitor-counter-num { color: #FFD400; font-weight: 900; }
+/* [신규 2026-04-21] TODAY · 전체 사이 구분점 */
+.visitor-counter-divider {
+    color: #fff; opacity: 0.45;
+    margin: 0 2px;
+    font-weight: 700;
+}
 
 /* [수정] saving-modal: hidden 클래스가 display:none !important를 적용하므로
    기본 상태에서는 display를 지정하지 않음. toggleLoading()에서 JS로 직접 제어함. */
@@ -506,6 +512,37 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 .map-widget-left-top .map-widget-body    { max-height: 258px; }
 .map-widget-left-bottom .map-widget-body { max-height: 220px; }
 
+/* [신규 2026-04-21] 우측 2단 스태킹 — 상단: 마커 범례, 하단: 광고(아래로 밀림) */
+.map-widget-right-top { right: 10px; top: 75px; max-height: 170px; width: 180px; }
+.map-widget-right-top .map-widget-body { max-height: 130px; }
+/* 기존 #ad-widget(.map-widget-right)은 범례 높이만큼 아래로 밀어냄 */
+#ad-widget.map-widget-right { top: 255px; }
+
+/* [신규 2026-04-21] 마커 범례 위젯 — 실제 마커와 동일한 스와치로 직관성 ↑ */
+.legend-body { padding: 8px 10px; }
+.legend-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 0;
+}
+.legend-swatch {
+    flex-shrink: 0;
+    min-width: 52px;
+    padding: 3px 8px;
+    background: #fff;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.legend-swatch-user  { border: 2px solid #FFD400; color: #1c2633; }
+.legend-swatch-seoul { border: 2px solid #2c8be8; color: #1c2633; }
+.legend-swatch-text { letter-spacing: -0.3px; }
+.legend-text {
+    font-size: 12px; color: #1c2633; font-weight: 600;
+    letter-spacing: -0.2px;
+}
+
 .map-widget-header {
     display: flex; justify-content: space-between; align-items: center;
     padding: 10px 12px;
@@ -554,9 +591,11 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
    - 가까운 주차: 헤더(60px) 바로 아래, 접힘 기본, 강한 반투명 + 블러 + 짙은 테두리로 시인성 ↑
    - 태블릿 이상(≥768px)에서는 기존 레이아웃 유지 */
 @media (max-width: 767px) {
-    /* 최근 수다·사이드 광고 위젯 모바일 완전 숨김 (광고는 하단 배너로 대체) */
+    /* 최근 수다·사이드 광고 위젯 모바일 완전 숨김 (광고는 하단 배너로 대체)
+       [수정 2026-04-21] 범례도 모바일에선 지도 가림 방지 위해 숨김 */
     #recent-board-widget,
-    #ad-widget {
+    #ad-widget,
+    #legend-widget {
         display: none !important;
     }
 

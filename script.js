@@ -33,7 +33,7 @@ var boardSearchDebounceId = null;
 var clusterMarkers = [];
 var clusterUpdateScheduled = false;
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyU0Fk_tjhFe70Vlfb78JsfVY5-AIVoKQOxLtAVgmIeQxj9_SQDtVDrz_HUty1yGJn8/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjMpcp5cLWRPFHQqCYluGAv_P_GgosJV6f9Nr7cNnXSOQ4xjD2ptwjT873NXgSJ2DP/exec";
 
 // [신규 2026-04-20] 주차장 기본 이미지 (인라인 SVG 데이터 URI) — 업로드된 이미지가 없거나 로드 실패 시 대체용
 const DEFAULT_PARKING_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
@@ -96,6 +96,9 @@ async function preFetchData() {
         // 광고 위젯은 데이터 무관하게 노출
         const _adEl = document.getElementById('ad-widget');
         if (_adEl) _adEl.classList.remove('hidden');
+        // [신규 2026-04-21] 마커 범례 위젯도 데이터 무관 노출 (PC에서만 보이고 모바일은 CSS로 숨김)
+        const _legendEl = document.getElementById('legend-widget');
+        if (_legendEl) _legendEl.classList.remove('hidden');
 
     } catch (e) {
         console.error("통합 수급 프로세스 치명적 에러:", e);
@@ -398,8 +401,10 @@ function renderRanking() {
     const formulaHtml = `
         <div class="rank-formula">
             <b>점수 공식</b><br>
-            제보 1건당 +5점 · 내 제보에 받은 별점 합계 (1★=1점, 5★=5점)<br>
-            <span style="color:#999;">※ 본인이 본인 제보에 남긴 후기는 점수에 포함되지 않아요.</span>
+            주차 제보 1건당 +5점 · 수다방 글 1건당 +5점 (스팸 필터)<br>
+            받은 별점 합계 (1★=1점, 5★=5점)<br>
+            후기 작성 / 수다방 댓글 / 단속 신고 1건당 +2.5점<br>
+            <span style="color:#999;">※ 본인이 본인 제보에 남긴 후기, 의미 없는 반복 문자 게시글은 점수에 포함되지 않아요.</span>
         </div>`;
 
     content.innerHTML = `
@@ -604,8 +609,9 @@ function toggleWidget(id) {
 }
 
 // [신규 2026-04-20] 지도 위젯 보이기/숨기기 (수다방·랭킹 페이지 이동 시)
+// [수정 2026-04-21] legend-widget도 동일하게 토글
 function hideMapWidgets() {
-    ['nearby-widget', 'recent-board-widget', 'ad-widget'].forEach(id => {
+    ['nearby-widget', 'recent-board-widget', 'ad-widget', 'legend-widget'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
@@ -614,9 +620,11 @@ function showMapWidgets() {
     // 데이터가 준비됐을 때만 다시 노출
     if (currentUserPos || (preloadedData && preloadedData.length > 0)) renderNearbyWidget();
     if (boardData && boardData.length > 0) renderRecentBoardWidget();
-    // 광고 위젯은 항상 노출 (데이터 의존 없음)
+    // 광고·범례 위젯은 항상 노출 (데이터 의존 없음)
     const adEl = document.getElementById('ad-widget');
     if (adEl) adEl.classList.remove('hidden');
+    const legendEl = document.getElementById('legend-widget');
+    if (legendEl) legendEl.classList.remove('hidden');
 }
 
 function setupMap(lat, lng) {
@@ -657,9 +665,11 @@ function hideSplashScreen() {
 }
 
 // [신규 2026-04-20] 방문자 수 위젯 — 세션당 1회만 +1, 총 누적 표시
+// [수정 2026-04-21] TODAY 필드 추가: 백엔드 visitor_count가 { today, total } 반환하도록 확장
 function initVisitorCounter() {
     const widget = document.getElementById('visitor-counter');
     const numEl = document.getElementById('visitor-counter-num');
+    const todayEl = document.getElementById('visitor-counter-today');
     if (!widget || !numEl) return;
     widget.classList.remove('hidden');
 
@@ -673,12 +683,15 @@ function initVisitorCounter() {
         .then(data => {
             if (data && typeof data.total === 'number') {
                 numEl.textContent = data.total.toLocaleString('ko-KR');
+                if (todayEl && typeof data.today === 'number') {
+                    todayEl.textContent = data.today.toLocaleString('ko-KR');
+                }
                 if (!alreadyIncreased) {
                     try { sessionStorage.setItem('gj-visited', '1'); } catch (e) {}
                 }
             }
         })
-        .catch(() => { numEl.textContent = '–'; });
+        .catch(() => { numEl.textContent = '–'; if (todayEl) todayEl.textContent = '–'; });
 }
 
 // [리뉴얼 2026-04-20] 마커 콘텐츠 빌더 — 역물방울 핀 / 고슴도치 단속 마커
@@ -1823,4 +1836,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};

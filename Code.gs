@@ -102,28 +102,43 @@ function doGet(e) {
     }
 
     // [신규 - 단계 2] 랭킹 조회 (+ 단속 신고 점수 합산)
-    if (p.type === "get_ranking") return handleRanking(mainSheet, commentSheet, crackdownSheet);
+    if (p.type === "get_ranking") return handleRanking(mainSheet, commentSheet, crackdownSheet, boardSheet, boardCommentSheet);
 
     // [신규 2026-04-20] 방문자 수 조회 / +1 증가
     // - GET ?type=visitor_count         → 현재 값 반환만
     // - GET ?type=visitor_count&inc=1   → 값 +1 후 반환 (세션당 1회만 호출되도록 프론트에서 제어)
+    // [수정 2026-04-21] TODAY 통계 추가
+    //   키 구조: "total" = 전체 누적, "today_YYYY-MM-DD" = 당일 카운트
+    //   응답: { res, total, today }
     if (p.type === "visitor_count") {
-      if (!visitorSheet) return createResponse({res: "ok", total: 0});
+      if (!visitorSheet) return createResponse({res: "ok", total: 0, today: 0});
       var vRows = visitorSheet.getDataRange().getValues();
       var vRowIdx = -1, vTotal = 0;
+      var tz = Session.getScriptTimeZone() || "Asia/Seoul";
+      var todayKey = "today_" + Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
+      var tRowIdx = -1, tToday = 0;
       for (var vi = 1; vi < vRows.length; vi++) {
-        if (String(vRows[vi][0]) === "total") { vRowIdx = vi; vTotal = parseInt(vRows[vi][1]) || 0; break; }
+        var k = String(vRows[vi][0]);
+        if (k === "total")       { vRowIdx = vi; vTotal = parseInt(vRows[vi][1]) || 0; }
+        else if (k === todayKey) { tRowIdx = vi; tToday = parseInt(vRows[vi][1]) || 0; }
       }
       if (vRowIdx < 0) {
         visitorSheet.appendRow(["total", 0]);
         vRowIdx = visitorSheet.getLastRow() - 1;
         vTotal = 0;
       }
+      if (tRowIdx < 0) {
+        visitorSheet.appendRow([todayKey, 0]);
+        tRowIdx = visitorSheet.getLastRow() - 1;
+        tToday = 0;
+      }
       if (String(p.inc || "") === "1") {
         vTotal += 1;
+        tToday += 1;
         visitorSheet.getRange(vRowIdx + 1, 2).setValue(vTotal);
+        visitorSheet.getRange(tRowIdx + 1, 2).setValue(tToday);
       }
-      return createResponse({res: "ok", total: vTotal});
+      return createResponse({res: "ok", total: vTotal, today: tToday});
     }
 
     if (p.type === "add_board_comment") {
@@ -724,8 +739,24 @@ function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boar
   return createResponse(data);
 }
 
+// [신규 2026-04-21] 무의미한 게시글 필터 — 스팸 글로 점수 적립 방지
+//   1) 본문이 비어있으면 → 이미지가 반드시 있어야 점수 인정
+//   2) 본문이 있으면 공백 제거 후 5자 이상 & 고유 문자 3종 이상 있어야 인정
+//      (ㅋㅋㅋ, ㅎㅎㅎ, aaaa, 1111 등의 반복 차단)
+function isMeaningfulBoardPost(title, content, imageUrl) {
+  var c = String(content || "").replace(/\s+/g, "");
+  var hasImage = !!(imageUrl && String(imageUrl).trim());
+  if (!c) return hasImage;
+  if (c.length < 5) return false;
+  var charSet = {};
+  for (var i = 0; i < c.length; i++) charSet[c.charAt(i)] = 1;
+  if (Object.keys(charSet).length < 3) return false;
+  return true;
+}
+
 // [신규 - 단계 4-3] 유저 점수 계산 (신고 권한/가중치 판정용)
-// 공식: (제보 수 × 5) + (받은 별점 합계) + (단속 신고 × 2.5), 자기 후기 제외
+// 공식: (제보 수 × 5) + (받은 별점 합계) + (단속 신고 × 2.5) + (유효 수다방 글 × 5)
+//       + (주차 후기 작성 × 2.5) + (수다방 댓글 × 2.5), 자기 후기 제외
 function getUserScore(user, mainSheet, commentSheet) {
   if (!user) return 0;
   var mainRows = mainSheet.getDataRange().getValues();
@@ -740,12 +771,16 @@ function getUserScore(user, mainSheet, commentSheet) {
     }
   }
 
-  var reviewSum = 0;
+  var reviewSum = 0;                // 내 장소에 달린 후기 별점 합 (받은 쪽)
+  var reviewGivenCount = 0;         // [신규 2026-04-21] 내가 쓴 주차 후기 건수 (준 쪽)
   for (var j = 1; j < cmtRows.length; j++) {
     var target = String(cmtRows[j][0]).trim();
     var reviewer = String(cmtRows[j][1]);
+    if (reviewer === String(user)) {
+      if (!myPlaces[target]) reviewGivenCount++; // 자기 제보 후기는 받는 쪽 차단 + 주는 쪽도 제외
+      continue;
+    }
     if (!myPlaces[target]) continue;
-    if (reviewer === String(user)) continue; // 자기 후기 제외
     reviewSum += parseFloat(cmtRows[j][3] || 0);
   }
 
@@ -761,13 +796,42 @@ function getUserScore(user, mainSheet, commentSheet) {
     }
   } catch (e) { /* 시트 없으면 0 */ }
 
-  return (reportCount * 5) + reviewSum + (crackdownCount * 2.5);
+  // [신규 2026-04-21] 수다방 유효 글 (+5 per) — board 스키마: [ID, 작성자, 제목, 본문, 이미지URL, 링크, 날짜, ...]
+  var validPostCount = 0;
+  try {
+    var bSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("board");
+    if (bSheet) {
+      var bRows = bSheet.getDataRange().getValues();
+      for (var b = 1; b < bRows.length; b++) {
+        if (String(bRows[b][1]) !== String(user)) continue;
+        if (isMeaningfulBoardPost(bRows[b][2], bRows[b][3], bRows[b][4])) validPostCount++;
+      }
+    }
+  } catch (e) { /* 시트 없으면 0 */ }
+
+  // [신규 2026-04-21] 수다방 댓글 (+2.5 per) — board_comments 스키마: [게시글ID, 작성자, 내용, 날짜]
+  var boardCmtCount = 0;
+  try {
+    var bcSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("board_comments");
+    if (bcSheet) {
+      var bcRows = bcSheet.getDataRange().getValues();
+      for (var bc = 1; bc < bcRows.length; bc++) {
+        if (String(bcRows[bc][1]) !== String(user)) continue;
+        var cmtText = String(bcRows[bc][2] || "").trim();
+        if (cmtText.length >= 2) boardCmtCount++; // 지나치게 짧은 댓글은 제외
+      }
+    }
+  } catch (e) { /* 시트 없으면 0 */ }
+
+  return (reportCount * 5) + reviewSum + (crackdownCount * 2.5)
+       + (validPostCount * 5) + (reviewGivenCount * 2.5) + (boardCmtCount * 2.5);
 }
 
 // [신규 - 단계 2] 랭킹 계산
-// 점수 공식: (제보 수 × 5) + (내 제보에 받은 별점 합계) + (단속 신고 × 2.5) — 자기 후기는 제외
+// 점수 공식: (제보 수 × 5) + (내 제보에 받은 별점 합계) + (단속 신고 × 2.5)
+//           [신규 2026-04-21] + (수다방 유효 글 × 5) + (주차 후기 작성 × 2.5) + (수다방 댓글 × 2.5)
 // 정렬: 점수 desc → 제보 수 desc → 첫 제보일 asc
-function handleRanking(mainSheet, commentSheet, crackdownSheet) {
+function handleRanking(mainSheet, commentSheet, crackdownSheet, boardSheet, boardCommentSheet) {
   try {
     var mainRows = mainSheet.getDataRange().getValues();
     var cmtRows = commentSheet.getDataRange().getValues();
@@ -779,7 +843,11 @@ function handleRanking(mainSheet, commentSheet, crackdownSheet) {
       if (!userStats[u]) {
         userStats[u] = {
           user: u, reportCount: 0, reviewCount: 0, reviewSum: 0,
-          crackdownCount: 0, firstReportDate: null
+          crackdownCount: 0,
+          postCount: 0,          // [신규 2026-04-21] 유효 수다방 글 수
+          reviewGivenCount: 0,   // [신규 2026-04-21] 내가 작성한 주차 후기 수
+          boardCmtCount: 0,      // [신규 2026-04-21] 수다방 댓글 수
+          firstReportDate: null
         };
       }
       return userStats[u];
@@ -806,17 +874,26 @@ function handleRanking(mainSheet, commentSheet, crackdownSheet) {
       placeToAuthor[placeName] = u;
     }
 
-    // 후기 집계 (자기 후기 제외)
+    // 후기 집계
+    //   - 받는 쪽(제보자): 자기 후기 제외 + 합산
+    //   - 주는 쪽(작성자): 2.5점 per, 자기 장소 후기는 주는 쪽도 제외(어뷰징 방지)
     for (var j = 1; j < cmtRows.length; j++) {
       var target = String(cmtRows[j][0]).trim();
       var reviewer = String(cmtRows[j][1]);
       var rating = parseFloat(cmtRows[j][3] || 0);
       var author = placeToAuthor[target];
-      if (!author) continue;           // 서울시 API 등 사용자 제보 아닌 대상은 집계 제외
-      if (author === reviewer) continue; // 자기 후기 점수 제외 (단계 1로 신규 유입은 차단됐지만 기존 데이터 방어)
-      if (!userStats[author]) continue;
-      userStats[author].reviewCount += 1;
-      userStats[author].reviewSum += rating;
+      if (!reviewer) continue;
+      if (OPERATOR_NICKS.indexOf(reviewer) !== -1) continue;
+
+      // 받는 쪽 집계
+      if (author && author !== reviewer && userStats[author]) {
+        userStats[author].reviewCount += 1;
+        userStats[author].reviewSum += rating;
+      }
+      // 주는 쪽 집계 (자기 장소 제외)
+      if (!author || author !== reviewer) {
+        ensureUser(reviewer).reviewGivenCount += 1;
+      }
     }
 
     // [신규 2026-04-20] 단속 신고 집계 (+2.5점 per). 운영자 계정 제외.
@@ -830,10 +907,41 @@ function handleRanking(mainSheet, commentSheet, crackdownSheet) {
       }
     }
 
+    // [신규 2026-04-21] 수다방 유효 글 집계 (+5점 per) — 스팸 필터 통과한 글만 인정
+    if (boardSheet) {
+      var bRows3 = boardSheet.getDataRange().getValues();
+      for (var bb = 1; bb < bRows3.length; bb++) {
+        var bAuthor = String(bRows3[bb][1] || "");
+        if (!bAuthor) continue;
+        if (OPERATOR_NICKS.indexOf(bAuthor) !== -1) continue;
+        if (isMeaningfulBoardPost(bRows3[bb][2], bRows3[bb][3], bRows3[bb][4])) {
+          ensureUser(bAuthor).postCount += 1;
+        }
+      }
+    }
+
+    // [신규 2026-04-21] 수다방 댓글 집계 (+2.5점 per)
+    if (boardCommentSheet) {
+      var bcRows3 = boardCommentSheet.getDataRange().getValues();
+      for (var bcc = 1; bcc < bcRows3.length; bcc++) {
+        var bcAuthor = String(bcRows3[bcc][1] || "");
+        if (!bcAuthor) continue;
+        if (OPERATOR_NICKS.indexOf(bcAuthor) !== -1) continue;
+        var bcText = String(bcRows3[bcc][2] || "").trim();
+        if (bcText.length < 2) continue; // 지나치게 짧은 댓글 제외
+        ensureUser(bcAuthor).boardCmtCount += 1;
+      }
+    }
+
     // 점수 계산 및 배열화
     var users = Object.keys(userStats).map(function(u) {
       var s = userStats[u];
-      s.score = (s.reportCount * 5) + s.reviewSum + ((s.crackdownCount || 0) * 2.5);
+      s.score = (s.reportCount * 5)
+              + s.reviewSum
+              + ((s.crackdownCount || 0) * 2.5)
+              + ((s.postCount || 0) * 5)
+              + ((s.reviewGivenCount || 0) * 2.5)
+              + ((s.boardCmtCount || 0) * 2.5);
       s.avgRating = s.reviewCount > 0 ? (s.reviewSum / s.reviewCount).toFixed(1) : "0.0";
       return s;
     });
