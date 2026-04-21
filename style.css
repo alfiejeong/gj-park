@@ -592,12 +592,46 @@ body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
    - 태블릿 이상(≥768px)에서는 기존 레이아웃 유지 */
 @media (max-width: 767px) {
     /* 최근 수다·사이드 광고 위젯 모바일 완전 숨김 (광고는 하단 배너로 대체)
-       [수정 2026-04-21] 범례도 모바일에선 지도 가림 방지 위해 숨김 */
+       [수정 2026-04-21] 범례는 모바일에서도 우측 상단에 축소 버전으로 노출 (아래 규칙으로 스타일) */
     #recent-board-widget,
-    #ad-widget,
-    #legend-widget {
+    #ad-widget {
         display: none !important;
     }
+
+    /* [신규 2026-04-21] 모바일 마커 범례 — 우측 상단, 가까운 주차와 대칭 배치
+       접힘 기본 + 반투명 처리로 지도 시인성 유지 */
+    #legend-widget.map-widget-right-top {
+        right: 10px;
+        left: auto;
+        top: 66px;
+        width: 148px;
+        max-height: 150px;
+        background: rgba(255, 255, 255, 0.41);
+        backdrop-filter: blur(6px) saturate(120%);
+        -webkit-backdrop-filter: blur(6px) saturate(120%);
+        border: 1.5px solid rgba(28, 38, 51, 0.35);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+        border-radius: 14px;
+    }
+    #legend-widget.map-widget-right-top.collapsed {
+        max-height: 34px;
+        background: rgba(255, 255, 255, 0.35);
+    }
+    #legend-widget .map-widget-header {
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 800;
+        background: rgba(255, 212, 0, 0.27);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        color: #1c2633;
+        border-radius: 12px 12px 0 0;
+    }
+    #legend-widget.collapsed .map-widget-header { border-radius: 12px; }
+    #legend-widget .legend-body { padding: 6px 8px; }
+    #legend-widget .legend-row { padding: 3px 0; gap: 8px; }
+    #legend-widget .legend-swatch { min-width: 44px; padding: 2px 6px; font-size: 10px; }
+    #legend-widget .legend-text { font-size: 11px; }
 
     /* 가까운 주차 — 헤더 바로 아래로, 반투명 + 진한 외곽선으로 시인성 업
        [수정 2026-04-20] 투명도 50% 더 강화 (본체·타이틀·접힘 상태 모두) */

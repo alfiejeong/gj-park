@@ -96,9 +96,18 @@ async function preFetchData() {
         // 광고 위젯은 데이터 무관하게 노출
         const _adEl = document.getElementById('ad-widget');
         if (_adEl) _adEl.classList.remove('hidden');
-        // [신규 2026-04-21] 마커 범례 위젯도 데이터 무관 노출 (PC에서만 보이고 모바일은 CSS로 숨김)
+        // [신규 2026-04-21] 마커 범례 위젯도 데이터 무관 노출
+        //   모바일에선 우측 상단에 접힘 상태로 노출 → 지도 시인성 유지
         const _legendEl = document.getElementById('legend-widget');
-        if (_legendEl) _legendEl.classList.remove('hidden');
+        if (_legendEl) {
+            _legendEl.classList.remove('hidden');
+            if (!_legendEl.dataset.mobileInit) {
+                _legendEl.dataset.mobileInit = '1';
+                if (window.matchMedia && window.matchMedia('(max-width: 767px)').matches) {
+                    _legendEl.classList.add('collapsed');
+                }
+            }
+        }
 
     } catch (e) {
         console.error("통합 수급 프로세스 치명적 에러:", e);
@@ -1836,4 +1845,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};
