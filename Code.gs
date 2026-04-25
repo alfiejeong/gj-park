@@ -326,15 +326,13 @@ function doGet(e) {
       return createResponse({res: "error", msg: "삭제할 후기를 찾을 수 없습니다."});
     }
 
-    // [신규 - 단계 4-2] 주차 후기 수정 (200점 이상)
+    // [수정 2026-04-25] 주차 후기 수정 — 본인 한정. 200점 점수 게이트 폐지.
     if (p.type === "edit_comment") {
       if (!checkUser(userSheet, p.user, p.pw)) {
         return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
       }
-      var eScore = getUserScore(p.user, mainSheet, commentSheet);
-      if (eScore < 200) {
-        return createResponse({res: "error", msg: "수정 권한은 200점 이상 유저에게만 부여됩니다. (현재 " + eScore + "점)"});
-      }
+      // [수정 2026-04-25] 200점 점수 게이트 폐지 — 본인 후기 수정은 누구나 가능
+      //   본인 여부는 아래 루프에서 String(eRows[er][1]) === String(p.user) 로 검증한다.
       var eTargetId = String(p.target_id).trim();
       var eRows = commentSheet.getDataRange().getValues();
       for (var er = 1; er < eRows.length; er++) {
@@ -374,14 +372,10 @@ function doGet(e) {
       return createResponse({res: "error", msg: "수정할 글을 찾을 수 없습니다."});
     }
 
-    // [신규 - 단계 4-2] 수다방 댓글 수정 (200점 이상)
+    // [수정 2026-04-25] 수다방 댓글 수정 — 본인 한정. 점수 게이트 폐지.
     if (p.type === "edit_board_comment") {
       if (!checkUser(userSheet, p.user, p.pw)) {
         return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
-      }
-      var eScore2 = getUserScore(p.user, mainSheet, commentSheet);
-      if (eScore2 < 200) {
-        return createResponse({res: "error", msg: "수정 권한은 200점 이상 유저에게만 부여됩니다. (현재 " + eScore2 + "점)"});
       }
       var ebRows = boardCommentSheet.getDataRange().getValues();
       var eTargetDate = String(p.date);
@@ -432,9 +426,10 @@ function doGet(e) {
       if (!checkUser(userSheet, p.user, p.pw)) {
         return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
       }
+      // [수정 2026-04-25] 신고 권한 임계값 500 → 200, 가중치 2배 임계값 2000 → 1000
       var score = getUserScore(p.user, mainSheet, commentSheet);
-      if (score < 500) {
-        return createResponse({res: "error", msg: "신고 권한은 500점 이상 유저에게만 부여됩니다. (현재 " + score + "점)"});
+      if (score < 200) {
+        return createResponse({res: "error", msg: "신고 권한은 200점 이상 유저에게만 부여됩니다. (현재 " + score + "점)"});
       }
       var targetPost = null;
       var postRowsR = boardSheet.getDataRange().getValues();
@@ -453,7 +448,7 @@ function doGet(e) {
           return createResponse({res: "error", msg: "이미 신고하신 글입니다."});
         }
       }
-      var weight = score >= 2000 ? 2 : 1; // 2000점 이상 가중치 2배
+      var weight = score >= 1000 ? 2 : 1; // [수정 2026-04-25] 1000점 이상 가중치 2배 (기존 2000)
       boardReportsSheet.appendRow([p.post_id, p.user, weight, new Date()]);
       return createResponse({res: "ok", weight: weight});
     }
@@ -463,9 +458,10 @@ function doGet(e) {
       if (!checkUser(userSheet, p.user, p.pw)) {
         return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
       }
+      // [수정 2026-04-25] 신고 권한 임계값 500 → 200
       var rscore = getUserScore(p.user, mainSheet, commentSheet);
-      if (rscore < 500) {
-        return createResponse({res: "error", msg: "신고 권한은 500점 이상 유저에게만 부여됩니다. (현재 " + rscore + "점)"});
+      if (rscore < 200) {
+        return createResponse({res: "error", msg: "신고 권한은 200점 이상 유저에게만 부여됩니다. (현재 " + rscore + "점)"});
       }
       // 대상 댓글 존재 확인 & 자기 댓글 신고 차단
       var bcRowsR = boardCommentSheet.getDataRange().getValues();
@@ -495,7 +491,7 @@ function doGet(e) {
           return createResponse({res: "error", msg: "이미 신고하신 댓글입니다."});
         }
       }
-      var rweight = rscore >= 2000 ? 2 : 1;
+      var rweight = rscore >= 1000 ? 2 : 1; // [수정 2026-04-25] 가중치 2배 임계값 2000 → 1000
       boardCmtReportsSheet.appendRow([p.post_id, p.comment_user, p.date, p.user, rweight, new Date()]);
       return createResponse({res: "ok", weight: rweight});
     }

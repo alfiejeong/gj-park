@@ -100,6 +100,23 @@
 
         .empty { color: #94a3b8; text-align: center; padding: 30px 0; font-size: 13px; }
 
+        /* [신규 2026-04-25] 방문자 통계 카드 */
+        .visitor-stat-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+        }
+        .visitor-stat-card {
+            background: #1c2633; border: 1px solid #3d4d61;
+            border-radius: 12px; padding: 18px 14px; text-align: center;
+        }
+        .visitor-stat-card .vs-label {
+            font-size: 11px; color: #94a3b8; font-weight: bold;
+            letter-spacing: 0.5px; margin-bottom: 6px;
+        }
+        .visitor-stat-card .vs-num {
+            font-size: 28px; color: #FFD400; font-weight: 900;
+            font-variant-numeric: tabular-nums;
+        }
+
         #toast {
             position: fixed; top: 80px; right: 24px;
             background: #1c2633; color: #FFD400; border: 1px solid #FFD400;
@@ -163,13 +180,31 @@
                 <div class="empty">공지를 불러오는 중...</div>
             </div>
         </div>
+
+        <!-- [신규 2026-04-25] 방문자 통계 패널 — 메인 화면에서 빼고 여기로 이전 -->
+        <div class="panel">
+            <h2>👣 방문자 통계</h2>
+            <p class="subtitle">실시간 누적 집계입니다. 사용자별 중복 방문은 세션당 1회만 카운트됩니다.</p>
+            <div class="visitor-stat-grid">
+                <div class="visitor-stat-card">
+                    <div class="vs-label">오늘 (TODAY)</div>
+                    <div class="vs-num" id="vs-today">—</div>
+                </div>
+                <div class="visitor-stat-card">
+                    <div class="vs-label">전체 누적</div>
+                    <div class="vs-num" id="vs-total">—</div>
+                </div>
+            </div>
+            <button class="primary" onclick="refreshVisitorStats()" style="margin-top:14px;">새로고침</button>
+            <div id="vs-error" style="color:#ff6b6b; font-size:12px; margin-top:8px; min-height:14px;"></div>
+        </div>
     </main>
 </div>
 
 <div id="toast"></div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwUg2qGwpz37felw9juj3BlL8MxkLRh3ba6sgXWe1RG_K1BpaBXpApQyX14JfP-3jXt/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbylAJsosBTabreDxZx7FatAJh4ly48aM312uNfj22D9p66ELdCzUozlRyl1xy0P4RcU/exec";
 
 // 운영자 닉네임 (서버측과 동일해야 함)
 const OPERATOR_NICK = "쌍칼";
@@ -226,8 +261,36 @@ async function adminLogin() {
         document.getElementById('admin-screen').classList.remove('hidden');
         document.getElementById('who-label').innerText = `${nick} 님`;
         renderNoticeList(data);
+        // [신규 2026-04-25] 로그인 직후 방문자 통계도 즉시 로드
+        refreshVisitorStats();
     } catch (e) {
         errEl.innerText = "네트워크 오류 — 잠시 후 다시 시도해주세요.";
+    }
+}
+
+// [신규 2026-04-25] 방문자 통계 — inc 없이 조회만 (어드민이 새로고침해도 카운트 안 늘어남)
+async function refreshVisitorStats() {
+    const todayEl = document.getElementById('vs-today');
+    const totalEl = document.getElementById('vs-total');
+    const errEl = document.getElementById('vs-error');
+    if (!todayEl || !totalEl) return;
+    errEl.innerText = '';
+    todayEl.innerText = '...';
+    totalEl.innerText = '...';
+    try {
+        const res = await fetch(`${SCRIPT_URL}?type=visitor_count&t=${Date.now()}`);
+        const data = await res.json();
+        if (data && typeof data.total === 'number') {
+            totalEl.innerText = data.total.toLocaleString('ko-KR');
+            todayEl.innerText = (typeof data.today === 'number')
+                ? data.today.toLocaleString('ko-KR') : '—';
+        } else {
+            errEl.innerText = "응답 형식 오류";
+            todayEl.innerText = '—'; totalEl.innerText = '—';
+        }
+    } catch (e) {
+        errEl.innerText = "네트워크 오류";
+        todayEl.innerText = '—'; totalEl.innerText = '—';
     }
 }
 
