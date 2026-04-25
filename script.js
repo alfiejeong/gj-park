@@ -32,6 +32,11 @@ var boardSearchDebounceId = null;
 // [신규 2026-04-25] 수다방 데이터 마지막 수급 시각 — 30초 TTL 캐시로 중복 fetch 방지
 var _lastBoardFetchAt = 0;
 const BOARD_CACHE_TTL_MS = 30000;
+// [성능 개선 2026-04-26] 공지 모달 표시 지연 제거 — preFetchData에서 미리 받아 캐시.
+//   기존엔 스플래시 닫힌 뒤에야 별도 fetch를 발사해서 4~10초 지연.
+//   이제는 다른 데이터와 동시에 받아두고, maybeShowNotice는 캐시에서 즉시 읽음.
+var _noticesCache = null;        // null = 아직 미수신, [] = 수신했으나 비어있음, [...] = 정상
+var _noticesFetchDone = false;   // fetch 완료 여부 (캐시가 [] 일 수도 있어 별도 플래그 필요)
 // [신규 2026-04-25] 운영자(쌍칼) 글만 모아보기 토글 — true면 author === 쌍칼 만 필터링
 var boardOperatorOnly = false;
 // [신규 2026-04-25] 운영자 닉네임 (관리자 권한 식별 + 글 필터링용). 다중 닉 대비 배열로.
@@ -113,9 +118,30 @@ async function preFetchData() {
         })
         .catch(e => console.warn('ranking fetch 실패:', e));
 
+    // [성능 개선 2026-04-26] 공지도 병렬 수급 → 스플래시 닫힘과 동시에 즉시 표시 가능.
+    //   도착 즉시 _noticesCache에 저장. 도착 시점에 이미 스플래시가 닫혀있고
+    //   maybeShowNotice가 "대기 중" 상태라면 곧장 모달을 띄운다.
+    const fetchNoticesP = fetch(`${SCRIPT_URL}?type=get_notices&t=${t}`).then(res => res.json())
+        .then(data => {
+            _noticesCache = Array.isArray(data) ? data : [];
+            _noticesFetchDone = true;
+            // 만약 hideSplashScreen이 이미 실행돼서 maybeShowNotice가 호출됐는데
+            //   캐시가 비어있어 "대기 모드"였다면, 지금 즉시 모달을 띄워준다.
+            if (typeof _pendingShowNotice === 'function') {
+                const fn = _pendingShowNotice;
+                _pendingShowNotice = null;
+                fn();
+            }
+        })
+        .catch(e => {
+            console.warn('notices fetch 실패:', e);
+            _noticesCache = [];
+            _noticesFetchDone = true;
+        });
+
     try {
         // 모든 응답을 기다리되, 각 위젯은 위에서 이미 개별 렌더링 완료된 상태
-        await Promise.allSettled([fetchSheetP, fetchSeoulP, fetchBoardP, fetchRankingP]);
+        await Promise.allSettled([fetchSheetP, fetchSeoulP, fetchBoardP, fetchRankingP, fetchNoticesP]);
 
         isDataLoaded = true;
         console.log("🏁 데이터 수급 완료");
@@ -750,11 +776,13 @@ function hideSplashScreen() {
     const screen = document.getElementById('loading-screen');
     if (screen && screen.style.display !== 'none') {
         screen.style.opacity = '0';
+        // [성능 개선 2026-04-26] 공지 모달 호출을 setTimeout 밖으로 이동 →
+        //   500ms 페이드 애니메이션과 동시에 모달이 등장하도록.
+        //   preFetchData에서 미리 받아둔 캐시를 사용하므로 네트워크 대기 없음.
+        maybeShowNotice();
         setTimeout(() => {
             screen.style.display = 'none';
             console.log("✨ 모든 준비 완료. 지도 공개");
-            // [신규 2026-04-20] 스플래시가 닫힌 뒤 공지 모달 노출 (하루 1회)
-            maybeShowNotice();
             // [신규 2026-04-20] 방문자 카운터 초기화 (세션당 1회 +1)
             initVisitorCounter();
         }, 500);
@@ -2126,24 +2154,28 @@ function todayKey() {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
-async function maybeShowNotice() {
+// [성능 개선 2026-04-26] preFetchData가 아직 안 끝났을 때를 위한 펜딩 콜백 슬롯
+//   notices fetch가 끝나는 순간 이 함수가 호출되어 즉시 모달을 띄움.
+var _pendingShowNotice = null;
+
+function maybeShowNotice() {
     try {
         const skipUntil = localStorage.getItem('gj-notice-skip-date');
         if (skipUntil === todayKey()) return; // 오늘 이미 보지 않기로 체크함
     } catch (e) { /* localStorage 접근 실패 시엔 그냥 노출 */ }
-    // [수정 2026-04-25] 서버(notices 시트)에서 활성 공지를 받아 본문 채운 뒤 노출.
-    //   공지가 0건이면 모달 자체를 띄우지 않는다 (운영자가 비워두면 깔끔).
     const m = document.getElementById('notice-modal');
     if (!m) return;
-    try {
-        const res = await fetch(`${SCRIPT_URL}?type=get_notices&t=${Date.now()}`);
-        const list = await res.json();
-        if (!Array.isArray(list) || list.length === 0) return; // 등록된 공지 없음 → 모달 안 띄움
+
+    // [성능 개선 2026-04-26] 네트워크 호출 제거 — preFetchData가 미리 채워둔 캐시에서 즉시 읽음.
+    //   캐시가 아직 안 도착했다면 (희박한 케이스) 펜딩 콜백으로 등록 → 도착 즉시 표시.
+    if (_noticesFetchDone) {
+        const list = _noticesCache;
+        if (!Array.isArray(list) || list.length === 0) return; // 공지 없음
         renderNoticesModal(list);
         m.classList.remove('hidden');
-    } catch (e) {
-        console.warn("공지 로드 실패:", e);
-        // 네트워크 실패 시엔 조용히 패스 (앱 사용에 지장 없게)
+    } else {
+        // 아직 fetch 안 끝남 → 콜백 등록
+        _pendingShowNotice = function () { maybeShowNotice(); };
     }
 }
 
@@ -2221,4 +2253,4 @@ window.onpopstate = function(event) {
     history.pushState(null, "", window.location.pathname);
     alert("앱을 종료하려면 한 번 더 뒤로가기를 눌러주세요.");
     // 두 번 연속 뒤로가기 시 자연스럽게 이탈되도록 플래그 없이 둠
-};
+};
