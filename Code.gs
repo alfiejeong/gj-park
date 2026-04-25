@@ -32,6 +32,10 @@ function doGet(e) {
     var boardCmtReportsSheet = getOrCreateSheet(ss, "board_comment_reports", ["게시글ID", "댓글작성자", "댓글일시", "신고자", "신고자가중치", "신고일"]);
     // [신규 2026-04-20] 수다방 추천(좋아요) 시트 — 1인 1회 제약 (게시글ID+사용자)
     var boardLikesSheet = getOrCreateSheet(ss, "board_likes", ["게시글ID", "사용자", "비번", "날짜"]);
+    // [신규 2026-04-25] 수다방 비추천 시트 — 1인 1회 제약, 추천과 상호배타
+    var boardDislikesSheet = getOrCreateSheet(ss, "board_dislikes", ["게시글ID", "사용자", "비번", "날짜"]);
+    // [신규 2026-04-25] 공지사항 시트 — 어드민(쌍칼)이 등록/삭제. 활성 공지가 첫 진입 모달에 노출됨.
+    var noticeSheet = getOrCreateSheet(ss, "notices", ["ID", "제목", "본문", "작성자", "작성일", "활성여부"]);
     // [신규 2026-04-20] 방문자 카운터 시트 — 단일 row로 누적 카운트 관리
     var visitorSheet = null;
     try { visitorSheet = getOrCreateSheet(ss, "visitors", ["키", "값"]); }
@@ -42,7 +46,7 @@ function doGet(e) {
     try { crackdownSheet = getOrCreateSheet(ss, "crackdown_reports", ["대상ID", "작성자", "신고일", "비번"]); }
     catch (cdSheetErr) { console.warn("crackdown_reports 시트 초기화 실패:", cdSheetErr.toString()); }
 
-    if (p.type === "get_board") return handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet, boardLikesSheet);
+    if (p.type === "get_board") return handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet, boardLikesSheet, boardDislikesSheet);
 
     // [신규 2026-04-20] 조회수 +1
     if (p.type === "increment_view") {
@@ -87,6 +91,91 @@ function doGet(e) {
         }
       }
       return createResponse({res: "ok", likeCount: lkCount});
+    }
+
+    // [신규 2026-04-25] 게시글 추천 취소
+    if (p.type === "remove_like") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var rlPid = String(p.post_id || "").trim();
+      if (!rlPid) return createResponse({res: "error", msg: "post_id 누락"});
+      var rlRows = boardLikesSheet.getDataRange().getValues();
+      var rlRemoved = false;
+      for (var rli = rlRows.length - 1; rli >= 1; rli--) {
+        if (String(rlRows[rli][0]) === rlPid && String(rlRows[rli][1]) === String(p.user)) {
+          boardLikesSheet.deleteRow(rli + 1);
+          rlRemoved = true;
+        }
+      }
+      // 추천수 재계산
+      var rlAfter = boardLikesSheet.getDataRange().getValues();
+      var rlCount = 0;
+      for (var rli2 = 1; rli2 < rlAfter.length; rli2++) {
+        if (String(rlAfter[rli2][0]) === rlPid) rlCount++;
+      }
+      var bRowsRl = boardSheet.getDataRange().getValues();
+      for (var brl = 1; brl < bRowsRl.length; brl++) {
+        if (String(bRowsRl[brl][0]) === rlPid) {
+          boardSheet.getRange(brl + 1, 10).setValue(rlCount);
+          break;
+        }
+      }
+      return createResponse({res: "ok", likeCount: rlCount, removed: rlRemoved});
+    }
+
+    // [신규 2026-04-25] 게시글 비추 (1인 1회, 추천과 상호배타는 프론트에서 관리)
+    if (p.type === "add_dislike") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var dkPid = String(p.post_id || "").trim();
+      if (!dkPid) return createResponse({res: "error", msg: "post_id 누락"});
+      var dkRows = boardDislikesSheet.getDataRange().getValues();
+      for (var dki = 1; dki < dkRows.length; dki++) {
+        if (String(dkRows[dki][0]) === dkPid && String(dkRows[dki][1]) === String(p.user)) {
+          // 이미 있으면 카운트만 응답
+          var dkExistCount = 0;
+          for (var dkz = 1; dkz < dkRows.length; dkz++) if (String(dkRows[dkz][0]) === dkPid) dkExistCount++;
+          return createResponse({res: "error", msg: "이미 이 게시글을 비추하셨습니다.", dislikeCount: dkExistCount});
+        }
+      }
+      boardDislikesSheet.appendRow([dkPid, p.user, p.pw, new Date()]);
+      var dkCount = 1;
+      for (var dki2 = 1; dki2 < dkRows.length; dki2++) {
+        if (String(dkRows[dki2][0]) === dkPid) dkCount++;
+      }
+      // 추천수도 함께 응답하면 프론트가 한 번에 갱신 가능
+      var lkRecount = 0;
+      var lkAll = boardLikesSheet.getDataRange().getValues();
+      for (var lkrx = 1; lkrx < lkAll.length; lkrx++) if (String(lkAll[lkrx][0]) === dkPid) lkRecount++;
+      return createResponse({res: "ok", dislikeCount: dkCount, likeCount: lkRecount});
+    }
+
+    // [신규 2026-04-25] 게시글 비추 취소
+    if (p.type === "remove_dislike") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var rdPid = String(p.post_id || "").trim();
+      if (!rdPid) return createResponse({res: "error", msg: "post_id 누락"});
+      var rdRows = boardDislikesSheet.getDataRange().getValues();
+      var rdRemoved = false;
+      for (var rdi = rdRows.length - 1; rdi >= 1; rdi--) {
+        if (String(rdRows[rdi][0]) === rdPid && String(rdRows[rdi][1]) === String(p.user)) {
+          boardDislikesSheet.deleteRow(rdi + 1);
+          rdRemoved = true;
+        }
+      }
+      var rdAfter = boardDislikesSheet.getDataRange().getValues();
+      var rdCount = 0;
+      for (var rdi2 = 1; rdi2 < rdAfter.length; rdi2++) {
+        if (String(rdAfter[rdi2][0]) === rdPid) rdCount++;
+      }
+      var lkR2 = 0;
+      var lkAll2 = boardLikesSheet.getDataRange().getValues();
+      for (var lkrz = 1; lkrz < lkAll2.length; lkrz++) if (String(lkAll2[lkrz][0]) === rdPid) lkR2++;
+      return createResponse({res: "ok", dislikeCount: rdCount, likeCount: lkR2, removed: rdRemoved});
     }
 
     // [신규 2026-04-20] 특정 사용자가 추천한 게시글 ID 목록 (프론트 UI 상태 표시용)
@@ -259,6 +348,32 @@ function doGet(e) {
       return createResponse({res: "error", msg: "수정할 후기를 찾을 수 없습니다."});
     }
 
+    // [신규 2026-04-25] 수다방 게시글 수정 (본인 한정 — 비번이 일치해야 함)
+    //   * 제목·본문만 수정 가능. 이미지·작성자·날짜는 그대로 유지.
+    //   * 비번 검증: 1) checkUser 통과 + 2) 게시글에 저장된 비번과 동일해야 함 (안전망 이중 체크)
+    if (p.type === "edit_post") {
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "기존 비밀번호와 일치하지 않는 아이디입니다."});
+      }
+      var epPid = String(p.post_id || "").trim();
+      if (!epPid) return createResponse({res: "error", msg: "post_id 누락"});
+      var epRows = boardSheet.getDataRange().getValues();
+      for (var ep = 1; ep < epRows.length; ep++) {
+        if (String(epRows[ep][0]) === epPid) {
+          if (String(epRows[ep][1]) !== String(p.user)) {
+            return createResponse({res: "error", msg: "본인이 작성한 글만 수정할 수 있습니다."});
+          }
+          if (String(epRows[ep][7]) !== String(p.pw)) {
+            return createResponse({res: "error", msg: "글 작성 시 사용한 비밀번호와 다릅니다."});
+          }
+          if (typeof p.title   !== 'undefined') boardSheet.getRange(ep + 1, 3).setValue(p.title);
+          if (typeof p.content !== 'undefined') boardSheet.getRange(ep + 1, 4).setValue(p.content);
+          return createResponse({res: "ok"});
+        }
+      }
+      return createResponse({res: "error", msg: "수정할 글을 찾을 수 없습니다."});
+    }
+
     // [신규 - 단계 4-2] 수다방 댓글 수정 (200점 이상)
     if (p.type === "edit_board_comment") {
       if (!checkUser(userSheet, p.user, p.pw)) {
@@ -395,6 +510,99 @@ function doGet(e) {
       return createResponse({res: "error", msg: "비밀번호 불일치"});
     }
 
+    // =================================================
+    // [신규 2026-04-25] 공지사항 어드민 API
+    //   * get_notices : 활성 공지 전체(시간 역순)
+    //   * add_notice  : 운영자(쌍칼) 전용 — 비번 검증 후 등록
+    //   * delete_notice : 운영자 전용 — ID로 삭제(=활성여부 false)
+    //   * toggle_notice : 활성/비활성 토글
+    // =================================================
+    if (p.type === "get_notices") {
+      var ntRows = noticeSheet.getDataRange().getValues();
+      var ntOut = [];
+      for (var nt = ntRows.length - 1; nt >= 1; nt--) {
+        var active = String(ntRows[nt][5]).toUpperCase();
+        if (active === "FALSE" || active === "0" || active === "N") continue;
+        ntOut.push({
+          id: ntRows[nt][0],
+          title: ntRows[nt][1],
+          content: ntRows[nt][2],
+          author: ntRows[nt][3],
+          date: ntRows[nt][4] instanceof Date ? ntRows[nt][4].toISOString() : String(ntRows[nt][4])
+        });
+      }
+      return createResponse(ntOut);
+    }
+
+    if (p.type === "get_all_notices") {
+      // 어드민 페이지 전용 — 비활성 포함 전체 목록
+      if (!isOperator(p.user) || !checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "운영자 권한이 필요합니다."});
+      }
+      var ntAll = noticeSheet.getDataRange().getValues();
+      var ntAllOut = [];
+      for (var nta = ntAll.length - 1; nta >= 1; nta--) {
+        ntAllOut.push({
+          id: ntAll[nta][0],
+          title: ntAll[nta][1],
+          content: ntAll[nta][2],
+          author: ntAll[nta][3],
+          date: ntAll[nta][4] instanceof Date ? ntAll[nta][4].toISOString() : String(ntAll[nta][4]),
+          active: String(ntAll[nta][5]).toUpperCase() !== "FALSE" && String(ntAll[nta][5]) !== "0"
+        });
+      }
+      return createResponse(ntAllOut);
+    }
+
+    if (p.type === "add_notice") {
+      if (!isOperator(p.user)) {
+        return createResponse({res: "error", msg: "운영자(쌍칼)만 공지를 등록할 수 있습니다."});
+      }
+      if (!checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "비밀번호가 다릅니다."});
+      }
+      var antTitle = String(p.title || "").trim();
+      var antContent = String(p.content || "").trim();
+      if (!antTitle || !antContent) return createResponse({res: "error", msg: "제목과 본문을 입력해주세요."});
+      var newNoticeId = "NOTICE_" + new Date().getTime();
+      noticeSheet.appendRow([newNoticeId, antTitle, antContent, p.user, new Date(), true]);
+      return createResponse({res: "ok", id: newNoticeId});
+    }
+
+    if (p.type === "delete_notice") {
+      if (!isOperator(p.user) || !checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "운영자 권한이 필요합니다."});
+      }
+      var dnId = String(p.id || "").trim();
+      if (!dnId) return createResponse({res: "error", msg: "id 누락"});
+      var dnRows = noticeSheet.getDataRange().getValues();
+      for (var dn = dnRows.length - 1; dn >= 1; dn--) {
+        if (String(dnRows[dn][0]) === dnId) {
+          noticeSheet.deleteRow(dn + 1);
+          return createResponse({res: "ok"});
+        }
+      }
+      return createResponse({res: "error", msg: "공지를 찾을 수 없습니다."});
+    }
+
+    if (p.type === "toggle_notice") {
+      if (!isOperator(p.user) || !checkUser(userSheet, p.user, p.pw)) {
+        return createResponse({res: "error", msg: "운영자 권한이 필요합니다."});
+      }
+      var tnId = String(p.id || "").trim();
+      if (!tnId) return createResponse({res: "error", msg: "id 누락"});
+      var tnRows = noticeSheet.getDataRange().getValues();
+      for (var tn = 1; tn < tnRows.length; tn++) {
+        if (String(tnRows[tn][0]) === tnId) {
+          var cur = String(tnRows[tn][5]).toUpperCase();
+          var next = (cur === "FALSE" || cur === "0" || cur === "N") ? true : false;
+          noticeSheet.getRange(tn + 1, 6).setValue(next);
+          return createResponse({res: "ok", active: next});
+        }
+      }
+      return createResponse({res: "error", msg: "공지를 찾을 수 없습니다."});
+    }
+
     return handleFetch(p, mainSheet, commentSheet, crackdownSheet);
   } catch (err) { return createResponse({res: "error", msg: err.toString()}); }
 }
@@ -446,6 +654,12 @@ function checkUser(sheet, user, pw) {
     if (data[i][0] == user) return String(data[i][1]) === String(pw);
   }
   sheet.appendRow([user, pw]); return true;
+}
+
+// [신규 2026-04-25] 운영자(쌍칼) 권한 판별 — 공지 등록·삭제·sky.html 진입 검증용
+function isOperator(user) {
+  if (!user) return false;
+  return String(user) === "쌍칼";
 }
 
 function saveFileToDrive(base64Data, fileName) {
@@ -668,7 +882,7 @@ function handleFetch(p, mainSheet, commentSheet, crackdownSheet) {
   }
 }
 
-function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet, boardLikesSheet) {
+function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boardCmtReportsSheet, boardLikesSheet, boardDislikesSheet) {
   var posts = boardSheet.getDataRange().getValues().slice(1).reverse();
   var allCmts = boardCommentSheet.getDataRange().getValues().length > 1
     ? boardCommentSheet.getDataRange().getValues().slice(1)
@@ -681,6 +895,15 @@ function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boar
     for (var lkA = 1; lkA < lkAllRows.length; lkA++) {
       var lkId = String(lkAllRows[lkA][0]);
       likesMap[lkId] = (likesMap[lkId] || 0) + 1;
+    }
+  }
+  // [신규 2026-04-25] 비추수 집계
+  var dislikesMap = {};
+  if (boardDislikesSheet) {
+    var dkAllRows = boardDislikesSheet.getDataRange().getValues();
+    for (var dkA = 1; dkA < dkAllRows.length; dkA++) {
+      var dkId = String(dkAllRows[dkA][0]);
+      dislikesMap[dkId] = (dislikesMap[dkId] || 0) + 1;
     }
   }
 
@@ -729,6 +952,8 @@ function handleBoardFetch(boardSheet, boardCommentSheet, boardReportsSheet, boar
       // [신규 2026-04-20] 조회수·추천수 노출 (구 스키마 방어: 빈 셀이면 0)
       viewCount: parseInt(pos[8]) || 0,
       likeCount: likesMap[String(postId)] || parseInt(pos[9]) || 0,
+      // [신규 2026-04-25] 비추수
+      dislikeCount: dislikesMap[String(postId)] || 0,
       // [수정] date 포함 (삭제·신고 식별용). ISO 문자열로 통일.
       comments: matched.map(function(c) {
         var d = c[3] instanceof Date ? c[3].toISOString() : String(c[3]);

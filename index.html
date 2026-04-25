@@ -154,17 +154,15 @@
     </div>
 
     <!-- [신규 2026-04-20] 첫 진입 공지 모달 — 하루 한 번만 표시 (localStorage) -->
+    <!-- [수정 2026-04-25] 콘텐츠는 서버(notices 시트)에서 동적 로드. 운영자(쌍칼)가 sky.html에서 등록/삭제. -->
     <div id="notice-modal" class="hidden">
         <div class="notice-content">
             <div class="notice-header">
-                <h3>🚗 거지주차에 오신 것을 환영합니다</h3>
+                <h3 id="notice-modal-title">🚗 거지주차 공지</h3>
             </div>
-            <div class="notice-body">
-                <p><b>거지주차.com</b>은 수도권 주차난에 매일매일 허덕이는 우리 서민 운전자들을 위해 만들어졌습니다.</p>
-                <p>비싼 주차비에 지갑이 홀쭉해지기 전에, <b>여러분의 집단지성</b>만이 우리의 지갑을 구할 수 있어요. 숨겨둔 명당, 밤샘 무료 꿀자리, "여기 주차해도 돼?" 싶었던 그 자리 — 아낌없이 공유해주세요.</p>
-                <p>본 서비스는 온라인을 수놓았던 <b>&lt;거지맵&gt;</b>에서 영감을 받아 만들어졌습니다. 아직 <b>초기 서비스</b>라 여기저기 삐걱거릴 수 있지만, 매일같이 다듬어가고 있으니 너그러이 지켜봐 주세요.</p>
-                <p class="notice-punchline">"한 푼이라도 아껴야<br>하루가 든든한 거지주차 시민 여러분, 오늘도 안전운전 짠내운전!"</p>
-                <p class="notice-signature">- 주인장 쌍칼 -</p>
+            <div class="notice-body" id="notice-modal-body">
+                <!-- 동적 로드: script.js의 renderNoticesModal()이 채움 -->
+                <p style="color:#999; text-align:center;">공지를 불러오는 중...</p>
             </div>
             <div class="notice-footer">
                 <label class="notice-dismiss-label">

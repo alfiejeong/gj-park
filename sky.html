@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>거지주차 · 운영자 어드민</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+            background: #1c2633; color: #f5f5f5; min-height: 100vh;
+        }
+        header {
+            background: #FFD400; color: #000; padding: 18px 24px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+        }
+        header h1 { margin: 0; font-size: 20px; font-weight: 900; }
+        header .who { font-size: 12px; font-weight: bold; }
+        header .logout {
+            background: #1c2633; color: #FFD400;
+            border: 0; padding: 6px 14px; border-radius: 8px;
+            font-weight: bold; cursor: pointer; font-size: 12px;
+        }
+
+        main { max-width: 800px; margin: 30px auto; padding: 0 20px; }
+
+        /* ----- 로그인 ----- */
+        #login-screen {
+            max-width: 380px; margin: 80px auto; padding: 30px;
+            background: #2a3645; border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        #login-screen h2 { margin: 0 0 8px; font-size: 22px; color: #FFD400; }
+        #login-screen p { margin: 0 0 20px; font-size: 13px; color: #b0bdc8; }
+        #login-screen label { display: block; font-size: 12px; color: #b0bdc8; margin: 12px 0 4px; font-weight: bold; }
+        #login-screen input {
+            width: 100%; padding: 12px 14px; font-size: 14px;
+            border: 1px solid #3d4d61; background: #1c2633; color: #fff;
+            border-radius: 8px; outline: none;
+        }
+        #login-screen input:focus { border-color: #FFD400; }
+        #login-screen button {
+            width: 100%; margin-top: 18px; padding: 12px;
+            background: #FFD400; color: #000; border: 0; border-radius: 8px;
+            font-weight: 900; font-size: 14px; cursor: pointer;
+        }
+        #login-error { color: #ff6b6b; font-size: 12px; margin-top: 10px; min-height: 16px; }
+
+        /* ----- 어드민 본문 ----- */
+        .panel {
+            background: #2a3645; border-radius: 16px; padding: 22px;
+            margin-bottom: 22px; box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        .panel h2 { margin: 0 0 14px; font-size: 17px; color: #FFD400; }
+        .panel .subtitle { margin: -8px 0 18px; font-size: 12px; color: #94a3b8; }
+
+        label.field { display: block; font-size: 12px; color: #b0bdc8; margin: 10px 0 4px; font-weight: bold; }
+        input.field, textarea.field {
+            width: 100%; padding: 10px 12px;
+            border: 1px solid #3d4d61; background: #1c2633; color: #fff;
+            border-radius: 8px; font-family: inherit; font-size: 14px; outline: none;
+        }
+        textarea.field { min-height: 120px; resize: vertical; line-height: 1.6; }
+        input.field:focus, textarea.field:focus { border-color: #FFD400; }
+
+        button.primary {
+            background: #FFD400; color: #000;
+            padding: 11px 22px; border: 0; border-radius: 8px;
+            font-weight: 900; cursor: pointer; margin-top: 12px;
+        }
+        button.danger {
+            background: #ff5252; color: #fff;
+            padding: 6px 14px; border: 0; border-radius: 6px;
+            font-size: 12px; font-weight: bold; cursor: pointer;
+        }
+        button.toggle {
+            background: #3d4d61; color: #fff;
+            padding: 6px 14px; border: 0; border-radius: 6px;
+            font-size: 12px; font-weight: bold; cursor: pointer; margin-right: 6px;
+        }
+        button.toggle.on { background: #4caf50; }
+        button.toggle.off { background: #757575; }
+
+        .notice-row {
+            background: #1c2633; border: 1px solid #3d4d61;
+            padding: 14px; border-radius: 10px; margin-bottom: 10px;
+        }
+        .notice-row.inactive { opacity: 0.55; }
+        .notice-row .nr-head {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 10px; flex-wrap: wrap; margin-bottom: 6px;
+        }
+        .notice-row h3 { margin: 0; font-size: 14px; color: #fff; }
+        .notice-row .nr-meta { font-size: 11px; color: #94a3b8; margin-bottom: 8px; }
+        .notice-row .nr-body { font-size: 13px; color: #d0d8e2; white-space: pre-wrap; line-height: 1.6; }
+        .notice-row .nr-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+        .empty { color: #94a3b8; text-align: center; padding: 30px 0; font-size: 13px; }
+
+        #toast {
+            position: fixed; top: 80px; right: 24px;
+            background: #1c2633; color: #FFD400; border: 1px solid #FFD400;
+            padding: 12px 18px; border-radius: 10px;
+            font-weight: bold; font-size: 13px;
+            opacity: 0; transition: opacity 0.3s; pointer-events: none;
+            z-index: 999;
+        }
+        #toast.show { opacity: 1; }
+        #toast.error { color: #ff6b6b; border-color: #ff6b6b; }
+
+        .hidden { display: none !important; }
+
+        @media (max-width: 600px) {
+            header { padding: 14px 16px; }
+            header h1 { font-size: 16px; }
+            main { padding: 0 14px; margin-top: 18px; }
+            .panel { padding: 16px; }
+            #login-screen { margin: 40px 16px; padding: 22px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- 로그인 화면 -->
+<div id="login-screen">
+    <h2>🔒 거지주차 어드민</h2>
+    <p>운영자(쌍칼) 전용 페이지입니다. 닉네임과 비밀번호를 입력해주세요.</p>
+    <label>닉네임</label>
+    <input type="text" id="login-nick" autocomplete="username" value="쌍칼">
+    <label>비밀번호</label>
+    <input type="password" id="login-pw" autocomplete="current-password">
+    <button onclick="adminLogin()">로그인</button>
+    <div id="login-error"></div>
+</div>
+
+<!-- 어드민 본문 -->
+<div id="admin-screen" class="hidden">
+    <header>
+        <h1>거지주차 어드민</h1>
+        <div>
+            <span class="who" id="who-label"></span>
+            <button class="logout" onclick="adminLogout()">로그아웃</button>
+        </div>
+    </header>
+    <main>
+        <div class="panel">
+            <h2>📢 공지사항 등록</h2>
+            <p class="subtitle">활성 공지는 사이트 첫 진입 시 모달로 노출됩니다 (사용자가 "오늘 보지 않기" 체크 가능).</p>
+            <label class="field">제목</label>
+            <input type="text" id="new-notice-title" class="field" placeholder="예: 5월 1일 시스템 점검 안내">
+            <label class="field">본문</label>
+            <textarea id="new-notice-content" class="field" placeholder="공지 내용을 입력하세요. 줄바꿈은 그대로 유지됩니다."></textarea>
+            <button class="primary" onclick="addNotice()">공지 등록</button>
+        </div>
+
+        <div class="panel">
+            <h2>📋 등록된 공지</h2>
+            <p class="subtitle">활성 토글로 노출 여부를 즉시 변경할 수 있어요. 삭제는 영구 삭제입니다.</p>
+            <div id="notice-list">
+                <div class="empty">공지를 불러오는 중...</div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjMpcp5cLWRPFHQqCYluGAv_P_GgosJV6f9Nr7cNnXSOQ4xjD2ptwjT873NXgSJ2DP/exec";
+
+// 운영자 닉네임 (서버측과 동일해야 함)
+const OPERATOR_NICK = "쌍칼";
+
+// 세션 메모리에만 저장 (탭 닫으면 자동 로그아웃)
+let adminUser = "";
+let adminPw = "";
+
+function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.innerText = msg;
+    t.className = 'show' + (isError ? ' error' : '');
+    setTimeout(() => { t.className = ''; }, 2200);
+}
+
+function escapeHtml(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function adminLogin() {
+    const nick = document.getElementById('login-nick').value.trim();
+    const pw = document.getElementById('login-pw').value;
+    const errEl = document.getElementById('login-error');
+    errEl.innerText = '';
+
+    if (nick !== OPERATOR_NICK) {
+        errEl.innerText = "운영자(쌍칼) 계정만 로그인할 수 있습니다.";
+        return;
+    }
+    if (!pw) {
+        errEl.innerText = "비밀번호를 입력해주세요.";
+        return;
+    }
+
+    // 권한 검증 — get_all_notices를 호출해 200(또는 OK)을 받으면 통과
+    try {
+        const q = new URLSearchParams({ type: "get_all_notices", user: nick, pw: pw, t: Date.now() });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const data = await res.json();
+        if (data && data.res === "error") {
+            errEl.innerText = data.msg || "로그인 실패";
+            return;
+        }
+        if (!Array.isArray(data)) {
+            errEl.innerText = "응답 형식 오류";
+            return;
+        }
+        // 통과
+        adminUser = nick;
+        adminPw = pw;
+        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('admin-screen').classList.remove('hidden');
+        document.getElementById('who-label').innerText = `${nick} 님`;
+        renderNoticeList(data);
+    } catch (e) {
+        errEl.innerText = "네트워크 오류 — 잠시 후 다시 시도해주세요.";
+    }
+}
+
+function adminLogout() {
+    adminUser = ""; adminPw = "";
+    document.getElementById('admin-screen').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('login-pw').value = '';
+}
+
+async function fetchNotices() {
+    const q = new URLSearchParams({ type: "get_all_notices", user: adminUser, pw: adminPw, t: Date.now() });
+    const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+    const data = await res.json();
+    if (Array.isArray(data)) renderNoticeList(data);
+}
+
+function renderNoticeList(list) {
+    const wrap = document.getElementById('notice-list');
+    if (!list || list.length === 0) {
+        wrap.innerHTML = '<div class="empty">아직 등록된 공지가 없어요. 위에서 새 공지를 등록해보세요.</div>';
+        return;
+    }
+    wrap.innerHTML = list.map(n => {
+        const idEsc = String(n.id).replace(/'/g, "\\'");
+        return `
+        <div class="notice-row ${n.active ? '' : 'inactive'}">
+            <div class="nr-head">
+                <h3>${escapeHtml(n.title)}</h3>
+                <div class="nr-actions">
+                    <button class="toggle ${n.active ? 'on' : 'off'}" onclick="toggleNotice('${idEsc}')">${n.active ? '활성' : '비활성'}</button>
+                    <button class="danger" onclick="deleteNotice('${idEsc}')">삭제</button>
+                </div>
+            </div>
+            <div class="nr-meta">${escapeHtml(n.author)} · ${new Date(n.date).toLocaleString()}</div>
+            <div class="nr-body">${escapeHtml(n.content)}</div>
+        </div>`;
+    }).join('');
+}
+
+async function addNotice() {
+    const title = document.getElementById('new-notice-title').value.trim();
+    const content = document.getElementById('new-notice-content').value.trim();
+    if (!title || !content) { showToast("제목과 본문을 입력해주세요.", true); return; }
+    try {
+        const q = new URLSearchParams({ type: "add_notice", user: adminUser, pw: adminPw, title: title, content: content });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const r = await res.json();
+        if (r.res === "ok") {
+            document.getElementById('new-notice-title').value = '';
+            document.getElementById('new-notice-content').value = '';
+            showToast("공지가 등록되었습니다 ✅");
+            fetchNotices();
+        } else {
+            showToast("실패: " + (r.msg || ''), true);
+        }
+    } catch (e) { showToast("네트워크 오류", true); }
+}
+
+async function deleteNotice(id) {
+    if (!confirm("이 공지를 정말 삭제할까요? (복구 불가)")) return;
+    try {
+        const q = new URLSearchParams({ type: "delete_notice", user: adminUser, pw: adminPw, id: id });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const r = await res.json();
+        if (r.res === "ok") { showToast("삭제되었습니다."); fetchNotices(); }
+        else showToast("실패: " + (r.msg || ''), true);
+    } catch (e) { showToast("네트워크 오류", true); }
+}
+
+async function toggleNotice(id) {
+    try {
+        const q = new URLSearchParams({ type: "toggle_notice", user: adminUser, pw: adminPw, id: id });
+        const res = await fetch(`${SCRIPT_URL}?${q.toString()}`);
+        const r = await res.json();
+        if (r.res === "ok") { showToast(r.active ? "활성화 ✅" : "비활성화 ⛔"); fetchNotices(); }
+        else showToast("실패: " + (r.msg || ''), true);
+    } catch (e) { showToast("네트워크 오류", true); }
+}
+
+// Enter 키로 로그인 가능
+document.getElementById('login-pw').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') adminLogin();
+});
+</script>
+
+</body>
+</html>
